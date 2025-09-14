@@ -3,6 +3,141 @@ mod interactive;
 mod models;
 mod search;
 
+use anyhow::Result;
+use clap::{Parser, Subcommand};
+use interactive::InteractiveSelector;
+use search::SearchService;
+use std::path::PathBuf;
+use std::process;
+
+#[derive(Parser)]
+#[command(
+    name = "poke-lookup",
+    version = "0.1.0",
+    about = "日本語名からポケモンの英名を取得するツール (PokéAPI準拠)",
+    long_about = "日本語名（カタカナ）を入力すると PokéAPI 準拠の英名を返すCLI。\n出力結果は Pokemiro でそのまま利用できます。"
+)]
+struct Cli {
+    /// ポケモンの日本語名（カタカナ、種レベル）
+    #[arg(help = "ポケモンの日本語名（カタカナ、種レベル）")]
+    japanese_name: Option<String>,
+
+    /// names.json の明示パス
+    #[arg(long = "dict", value_name = "PATH", help = "names.json の明示パス")]
+    dict_path: Option<PathBuf>,
+
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// names.json を更新（既定はCI配布を取得）
+    Update {
+        /// PokéAPI を直接クロールして生成（通常は不要）
+        #[arg(long, help = "PokéAPI を直接クロールして生成（通常は不要）")]
+        online: bool,
+
+        /// CI配布のURLを上書き
+        #[arg(long = "source", value_name = "URL", help = "CI配布のURLを上書き")]
+        source_url: Option<String>,
+
+        /// 取得ファイルの検証
+        #[arg(long = "verify-sha256", value_name = "HEX", help = "取得ファイルの検証")]
+        verify_sha256: Option<String>,
+
+        /// 置換せず検証のみ
+        #[arg(long, help = "置換せず検証のみ")]
+        dry_run: bool,
+    },
+}
+
 fn main() {
-    println!("Hello, world!");
+    let result = run();
+    match result {
+        Ok(exit_code) => process::exit(exit_code),
+        Err(e) => {
+            eprintln!("Error: {:?}", e);
+            process::exit(1);
+        }
+    }
+}
+
+fn run() -> Result<i32> {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Some(Commands::Update {
+            online,
+            source_url,
+            verify_sha256,
+            dry_run,
+        }) => {
+            // TODO: 更新機能の実装（フェーズ3で対応予定）
+            eprintln!("Update functionality not yet implemented");
+            eprintln!("Parameters: online={}, source_url={:?}, verify_sha256={:?}, dry_run={}",
+                     online, source_url, verify_sha256, dry_run);
+            Ok(1)
+        }
+        None => {
+            // 検索機能
+            if let Some(japanese_name) = cli.japanese_name {
+                search_pokemon(&japanese_name, cli.dict_path)
+            } else {
+                // 引数なしの場合、全候補からインタラクティブ選択
+                search_interactive_all(cli.dict_path)
+            }
+        }
+    }
+}
+
+fn search_pokemon(japanese_name: &str, dict_path: Option<PathBuf>) -> Result<i32> {
+    // SearchServiceを初期化
+    let search_service = if let Some(path) = dict_path {
+        SearchService::with_path(path)?
+    } else {
+        SearchService::new()?
+    };
+
+    // インタラクティブセレクターを作成
+    let selector = InteractiveSelector::new(search_service);
+
+    // 検索実行
+    match selector.select_interactive(japanese_name)? {
+        Some(english_name) => {
+            // 成功: 英名を標準出力
+            println!("{}", english_name);
+            Ok(0)
+        }
+        None => {
+            // 候補なし
+            eprintln!("候補が見つかりませんでした: {}", japanese_name);
+            Ok(2)
+        }
+    }
+}
+
+fn search_interactive_all(dict_path: Option<PathBuf>) -> Result<i32> {
+    // SearchServiceを初期化
+    let search_service = if let Some(path) = dict_path {
+        SearchService::with_path(path)?
+    } else {
+        SearchService::new()?
+    };
+
+    // インタラクティブセレクターを作成
+    let selector = InteractiveSelector::new(search_service);
+
+    // 全候補から選択
+    match selector.select_from_all()? {
+        Some(english_name) => {
+            // 成功: 英名を標準出力
+            println!("{}", english_name);
+            Ok(0)
+        }
+        None => {
+            // ユーザーキャンセル
+            Ok(130)
+        }
+    }
 }

@@ -48,12 +48,8 @@ impl InteractiveSelector {
 
         match partial_matches.len() {
             0 => Ok(None), // 候補なし
-            1 => {
-                // 候補が1件なら自動確定
-                Ok(Some(partial_matches[0].1.to_string()))
-            }
             _ => {
-                // 複数候補があればインタラクティブ選択
+                // 候補があればインタラクティブ選択（1件でも）
                 self.run_skim_selection(partial_matches, query)
             }
         }
