@@ -59,6 +59,7 @@ impl SearchService {
     }
 
     /// 検索可能な全エントリ数を取得
+    #[allow(dead_code)]  // 更新機能で使用予定
     pub fn entry_count(&self) -> usize {
         self.name_map.len()
     }
