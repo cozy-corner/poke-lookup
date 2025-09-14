@@ -1341,6 +1341,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "skim",
+ "tempfile",
  "thiserror 2.0.16",
 ]
 
