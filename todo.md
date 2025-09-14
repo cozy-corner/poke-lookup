@@ -9,7 +9,7 @@
   - `names.json`のserde構造体
   - schema_version、generated_at、entries管理
 
-- [ ] **データアクセス層**
+- [x] **データアクセス層**
   - XDGディレクトリ対応のパス解決
   - JSONファイル読み込み、HashMap変換
 
