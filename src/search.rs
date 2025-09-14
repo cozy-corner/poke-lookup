@@ -18,6 +18,12 @@ impl SearchService {
         Ok(Self { name_map })
     }
 
+    /// HashMapから直接検索サービスを作成（テスト用）
+    #[allow(dead_code)]
+    pub fn from_name_map(name_map: HashMap<String, String>) -> Self {
+        Self { name_map }
+    }
+
     /// 新しい検索サービスインスタンスを作成（デフォルトパス使用）
     #[allow(dead_code)]  // updateコマンドで使用予定
     pub fn new() -> Result<Self> {
@@ -38,16 +44,26 @@ impl SearchService {
         self.name_map.get(japanese_name).map(|s| s.as_str())
     }
 
-    // 部分一致検索や前方一致検索は将来のインタラクティブ選択機能で実装
+    /// 部分一致検索（前方一致、後方一致、部分一致）
+    pub fn search_partial(&self, query: &str) -> Vec<(&str, &str)> {
+        let query_lower = query.to_lowercase();
+
+        self.name_map
+            .iter()
+            .filter(|(ja, _)| {
+                let ja_lower = ja.to_lowercase();
+                ja_lower.contains(&query_lower)
+            })
+            .map(|(ja, en)| (ja.as_str(), en.as_str()))
+            .collect()
+    }
 
     /// 検索可能な全エントリ数を取得
-    #[allow(dead_code)]  // インタラクティブ選択機能で使用予定
     pub fn entry_count(&self) -> usize {
         self.name_map.len()
     }
 
     /// 全てのエントリを取得（インタラクティブ選択用）
-    #[allow(dead_code)]  // インタラクティブ選択機能で使用予定
     pub fn all_entries(&self) -> Vec<(&str, &str)> {
         self.name_map
             .iter()
@@ -56,7 +72,6 @@ impl SearchService {
     }
 }
 
-// SearchResult と smart_search は将来のインタラクティブ選択機能で実装
 
 #[cfg(test)]
 mod tests {
@@ -91,7 +106,6 @@ mod tests {
         assert_eq!(service.search_exact("ピカ"), None);  // 部分一致はしない
     }
 
-    // 部分一致やスマート検索のテストは将来のインタラクティブ選択機能で実装
 
     #[test]
     fn test_entry_count() {
