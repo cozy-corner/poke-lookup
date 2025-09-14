@@ -1,4 +1,5 @@
 mod data;
+mod interactive;
 mod models;
 mod search;
 
