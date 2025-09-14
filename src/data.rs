@@ -67,11 +67,13 @@ impl DataLoader {
     }
 
     /// データファイルのパスを取得
+    #[allow(dead_code)]  // updateコマンドで使用予定
     pub fn data_path(&self) -> &Path {
         &self.data_path
     }
 
     /// データディレクトリの存在を保証（なければ作成）
+    #[allow(dead_code)]  // updateコマンドで使用予定
     pub fn ensure_data_dir(&self) -> Result<()> {
         if let Some(parent) = self.data_path.parent() {
             fs::create_dir_all(parent)
@@ -81,6 +83,7 @@ impl DataLoader {
     }
 
     /// データファイルが存在するかチェック
+    #[allow(dead_code)]  // updateコマンドで使用予定
     pub fn data_exists(&self) -> bool {
         self.data_path.exists()
     }
