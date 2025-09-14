@@ -5,7 +5,7 @@
   - Cargo.toml作成、依存関係定義
   - 基本的なディレクトリ構造
 
-- [ ] **データモデル定義**
+- [x] **データモデル定義**
   - `names.json`のserde構造体
   - schema_version、generated_at、entries管理
 
