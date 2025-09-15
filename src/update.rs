@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use reqwest::blocking::Client;
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -42,7 +43,7 @@ impl UpdateService {
         })
     }
 
-    pub fn update(&self, source_url: Option<String>, dry_run: bool) -> Result<()> {
+    pub fn update(&self, source_url: Option<String>, verify_sha256: Option<String>, dry_run: bool) -> Result<()> {
         let url = source_url.as_deref().unwrap_or(DEFAULT_DOWNLOAD_URL);
 
         eprintln!("Downloading from: {}", url);
@@ -62,6 +63,11 @@ impl UpdateService {
 
         let content = response.bytes()
             .context("Failed to read response body")?;
+
+        // SHA256検証（指定されている場合）
+        if let Some(expected_hash) = verify_sha256 {
+            self.verify_sha256_hash(&content, &expected_hash)?;
+        }
 
         let dictionary: NameDictionary = serde_json::from_slice(&content)
             .context("Failed to parse JSON")?;
@@ -106,6 +112,25 @@ impl UpdateService {
                 data_path.display()
             ))?;
 
+        Ok(())
+    }
+
+    fn verify_sha256_hash(&self, content: &[u8], expected_hash: &str) -> Result<()> {
+        let mut hasher = Sha256::new();
+        hasher.update(content);
+        let actual_hash = format!("{:x}", hasher.finalize());
+
+        let expected_hash_clean = expected_hash.to_lowercase();
+
+        if actual_hash != expected_hash_clean {
+            return Err(anyhow::anyhow!(
+                "SHA256 verification failed: expected {}, got {}",
+                expected_hash_clean,
+                actual_hash
+            ));
+        }
+
+        eprintln!("SHA256 verification passed: {}", actual_hash);
         Ok(())
     }
 }
@@ -159,5 +184,45 @@ mod tests {
     fn test_default_url_constant() {
         assert!(DEFAULT_DOWNLOAD_URL.starts_with("https://"));
         assert!(DEFAULT_DOWNLOAD_URL.contains("names.json"));
+    }
+
+    #[test]
+    fn test_verify_sha256_hash_success() {
+        let temp_dir = tempdir().unwrap();
+        let dict_path = temp_dir.path().join("names.json");
+        let service = UpdateService::with_path(dict_path).unwrap();
+
+        let content = b"test content";
+        let expected_hash = "6ae8a75555209fd6c44157c0aed8016e763ff435a19cf186f76863140143ff72";
+
+        let result = service.verify_sha256_hash(content, expected_hash);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_verify_sha256_hash_failure() {
+        let temp_dir = tempdir().unwrap();
+        let dict_path = temp_dir.path().join("names.json");
+        let service = UpdateService::with_path(dict_path).unwrap();
+
+        let content = b"test content";
+        let wrong_hash = "wrong_hash";
+
+        let result = service.verify_sha256_hash(content, wrong_hash);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("SHA256 verification failed"));
+    }
+
+    #[test]
+    fn test_verify_sha256_hash_case_insensitive() {
+        let temp_dir = tempdir().unwrap();
+        let dict_path = temp_dir.path().join("names.json");
+        let service = UpdateService::with_path(dict_path).unwrap();
+
+        let content = b"test content";
+        let expected_hash = "6AE8A75555209FD6C44157C0AED8016E763FF435A19CF186F76863140143FF72";
+
+        let result = service.verify_sha256_hash(content, expected_hash);
+        assert!(result.is_ok());
     }
 }
