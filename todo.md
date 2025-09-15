@@ -38,9 +38,19 @@
   - schema_version/countチェック
 
 ## フェーズ4: 配布準備
-- [ ] **CI/CD設定**
-  - GitHub Actions（月次データ更新）
-  - クロスコンパイル設定
+- [ ] **CI/CD設定（Phase 1: 基盤構築）**
+  - GitHub Actions月次データ更新ワークフロー作成
+  - サンプルnames.json生成スクリプト
+  - SHA256ハッシュ計算とGitHub Release自動作成
+  - poke-lookup updateコマンドの動作確認
+
+- [ ] **CI/CD設定（Phase 2: 実データ統合）**
+  - PokéAPIからの実データ取得機能
+  - エラーハンドリング強化
+
+- [ ] **バイナリ配布（オプション）**
+  - クロスコンパイル設定（Linux/macOS/Windows）
+  - GitHub Releaseでのバイナリ配布
 
 - [ ] **初回セットアップ改善**
   - 初回実行時の自動データダウンロード機能
