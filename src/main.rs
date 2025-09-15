@@ -144,7 +144,7 @@ fn handle_update(
     dict_path: Option<PathBuf>,
     online: bool,
     source_url: Option<String>,
-    _verify_sha256: Option<String>,
+    verify_sha256: Option<String>,
     dry_run: bool,
 ) -> Result<i32> {
     if online {
@@ -160,7 +160,7 @@ fn handle_update(
     };
 
     // 更新実行
-    match update_service.update(source_url, dry_run) {
+    match update_service.update(source_url, verify_sha256, dry_run) {
         Ok(()) => Ok(0),
         Err(e) => {
             eprintln!("Update failed: {:?}", e);

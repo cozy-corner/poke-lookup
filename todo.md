@@ -33,7 +33,7 @@
   - HTTPSダウンロード（reqwest）
   - デフォルトURL管理
 
-- [ ] **セキュリティ機能**
+- [x] **セキュリティ機能**
   - SHA256検証
   - schema_version/countチェック
 

@@ -61,6 +61,31 @@ impl NameDictionary {
     pub fn validate(&self) -> Result<(), String> {
         self.validate_schema()?;
         self.validate_count()?;
+        self.validate_entries()?;
+        Ok(())
+    }
+
+    /// エントリの妥当性検証
+    pub fn validate_entries(&self) -> Result<(), String> {
+        // 空のエントリチェック
+        for (i, entry) in self.entries.iter().enumerate() {
+            if entry.ja.is_empty() {
+                return Err(format!("Empty Japanese name at entry {}", i));
+            }
+            if entry.en.is_empty() {
+                return Err(format!("Empty English name at entry {}", i));
+            }
+        }
+
+        // 最小/最大エントリ数チェック
+        if self.count < 1 {
+            return Err("Entry count must be at least 1".to_string());
+        }
+
+        if self.count > 10000 {
+            return Err(format!("Entry count {} exceeds maximum limit of 10000", self.count));
+        }
+
         Ok(())
     }
 }
@@ -176,5 +201,46 @@ mod tests {
         };
 
         assert!(dict.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_entries_empty_names() {
+        let dict = NameDictionary {
+            schema_version: 1,
+            generated_at: Utc::now(),
+            count: 1,
+            entries: vec![NameEntry {
+                ja: "".to_string(),
+                en: "Pikachu".to_string(),
+            }],
+        };
+
+        assert!(dict.validate_entries().is_err());
+    }
+
+    #[test]
+    fn test_validate_entries_zero_count() {
+        let dict = NameDictionary {
+            schema_version: 1,
+            generated_at: Utc::now(),
+            count: 0,
+            entries: vec![],
+        };
+
+        assert!(dict.validate_entries().is_err());
+        assert!(dict.validate_entries().unwrap_err().contains("must be at least 1"));
+    }
+
+    #[test]
+    fn test_validate_entries_exceed_limit() {
+        let dict = NameDictionary {
+            schema_version: 1,
+            generated_at: Utc::now(),
+            count: 15000,
+            entries: vec![],
+        };
+
+        assert!(dict.validate_entries().is_err());
+        assert!(dict.validate_entries().unwrap_err().contains("exceeds maximum limit"));
     }
 }
