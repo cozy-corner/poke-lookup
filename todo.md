@@ -45,10 +45,10 @@
   - poke-lookup updateコマンドの動作確認
 
 - [ ] **CI/CD設定（Phase 2: 実データ統合）**
-  - [ ] **データ取得スクリプト作成**（.github/scripts/fetch-pokemon-data.sh）
-    - PokéAPIから全ポケモン種数を動的取得
+  - [x] **データ取得スクリプト作成**（.github/scripts/fetch-pokemon-data.py）
+    - PokéAPIから全ポケモン種数を動的取得（1025件）
     - 各ポケモンから ja-Hrkt と en の名前ペアを抽出
-    - names.json 形式で出力
+    - names.json 形式で出力（SHA256ハッシュ付き）
   - [ ] **GitHub Actionsワークフロー更新**（update-data.yml）
     - サンプルデータ生成をスクリプト実行に置換
     - timeout延長とログ出力改善
