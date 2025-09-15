@@ -1,0 +1,55 @@
+name: Update Pokemon Data
+
+on:
+  schedule:
+    # 毎月1日の午前2時（UTC）に実行
+    - cron: '0 2 1 * *'
+  workflow_dispatch:
+    # 手動実行も可能
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate sample names.json
+        run: |
+          # サンプルデータを生成
+          CURRENT_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          cat > names.json << EOF
+          {
+            "schema_version": 1,
+            "generated_at": "$CURRENT_TIME",
+            "count": 5,
+            "entries": [
+              { "ja": "ピカチュウ", "en": "pikachu" },
+              { "ja": "フシギダネ", "en": "bulbasaur" },
+              { "ja": "ヒトカゲ", "en": "charmander" },
+              { "ja": "ゼニガメ", "en": "squirtle" },
+              { "ja": "キャタピー", "en": "caterpie" }
+            ]
+          }
+          EOF
+
+      - name: Calculate SHA256
+        run: |
+          sha256sum names.json > names.json.sha256
+          echo "SHA256_HASH=$(cut -d' ' -f1 names.json.sha256)" >> $GITHUB_ENV
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: data-${{ github.run_number }}
+          name: Pokemon Data Update ${{ github.run_number }}
+          body: |
+            Pokemon names data update
+
+            **Entry count:** 5
+            **SHA256:** ${{ env.SHA256_HASH }}
+
+            Usage: `poke-lookup update`
+          files: |
+            names.json
+            names.json.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
