@@ -38,7 +38,7 @@
   - schema_version/countチェック
 
 ## フェーズ4: 配布準備
-- [ ] **CI/CD設定（Phase 1: 基盤構築）**
+- [x] **CI/CD設定（Phase 1: 基盤構築）**
   - GitHub Actions月次データ更新ワークフロー作成
   - サンプルnames.json生成スクリプト
   - SHA256ハッシュ計算とGitHub Release自動作成
