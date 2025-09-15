@@ -2,11 +2,13 @@ mod data;
 mod interactive;
 mod models;
 mod search;
+mod update;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use interactive::InteractiveSelector;
 use search::SearchService;
+use update::UpdateService;
 use std::path::PathBuf;
 use std::process;
 
@@ -73,11 +75,7 @@ fn run() -> Result<i32> {
             verify_sha256,
             dry_run,
         }) => {
-            // TODO: 更新機能の実装（フェーズ3で対応予定）
-            eprintln!("Update functionality not yet implemented");
-            eprintln!("Parameters: online={}, source_url={:?}, verify_sha256={:?}, dry_run={}",
-                     online, source_url, verify_sha256, dry_run);
-            Ok(1)
+            handle_update(cli.dict_path, online, source_url, verify_sha256, dry_run)
         }
         None => {
             // 検索機能
@@ -138,6 +136,35 @@ fn search_interactive_all(dict_path: Option<PathBuf>) -> Result<i32> {
         None => {
             // ユーザーキャンセル
             Ok(130)
+        }
+    }
+}
+
+fn handle_update(
+    dict_path: Option<PathBuf>,
+    online: bool,
+    source_url: Option<String>,
+    _verify_sha256: Option<String>,
+    dry_run: bool,
+) -> Result<i32> {
+    if online {
+        eprintln!("Online update (PokéAPI crawling) is not yet implemented");
+        return Ok(1);
+    }
+
+    // UpdateServiceを初期化
+    let update_service = if let Some(path) = dict_path {
+        UpdateService::with_path(path)?
+    } else {
+        UpdateService::new()?
+    };
+
+    // 更新実行
+    match update_service.update(source_url, dry_run) {
+        Ok(()) => Ok(0),
+        Err(e) => {
+            eprintln!("Update failed: {:?}", e);
+            Ok(1)
         }
     }
 }
