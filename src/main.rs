@@ -8,9 +8,9 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use interactive::InteractiveSelector;
 use search::SearchService;
-use update::UpdateService;
 use std::path::PathBuf;
 use std::process;
+use update::UpdateService;
 
 #[derive(Parser)]
 #[command(
@@ -45,7 +45,11 @@ enum Commands {
         source_url: Option<String>,
 
         /// 取得ファイルの検証
-        #[arg(long = "verify-sha256", value_name = "HEX", help = "取得ファイルの検証")]
+        #[arg(
+            long = "verify-sha256",
+            value_name = "HEX",
+            help = "取得ファイルの検証"
+        )]
         verify_sha256: Option<String>,
 
         /// 置換せず検証のみ
@@ -74,9 +78,7 @@ fn run() -> Result<i32> {
             source_url,
             verify_sha256,
             dry_run,
-        }) => {
-            handle_update(cli.dict_path, online, source_url, verify_sha256, dry_run)
-        }
+        }) => handle_update(cli.dict_path, online, source_url, verify_sha256, dry_run),
         None => {
             // 検索機能
             if let Some(japanese_name) = cli.japanese_name {
