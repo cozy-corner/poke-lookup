@@ -49,9 +49,9 @@
     - PokéAPIから全ポケモン種数を動的取得（1025件）
     - 各ポケモンから ja-Hrkt と en の名前ペアを抽出
     - names.json 形式で出力（SHA256ハッシュ付き）
-  - [ ] **GitHub Actionsワークフロー更新**（update-data.yml）
+  - [x] **GitHub Actionsワークフロー更新**（update-data.yml）
     - サンプルデータ生成をスクリプト実行に置換
-    - timeout延長とログ出力改善
+    - timeout延長（10分）とログ出力改善
   - [ ] **データ品質・エラーハンドリング強化**
     - validation機能追加（重複除去、空エントリチェック等）
     - エラー処理の改善
