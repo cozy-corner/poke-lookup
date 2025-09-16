@@ -43,12 +43,18 @@ impl UpdateService {
         })
     }
 
-    pub fn update(&self, source_url: Option<String>, verify_sha256: Option<String>, dry_run: bool) -> Result<()> {
+    pub fn update(
+        &self,
+        source_url: Option<String>,
+        verify_sha256: Option<String>,
+        dry_run: bool,
+    ) -> Result<()> {
         let url = source_url.as_deref().unwrap_or(DEFAULT_DOWNLOAD_URL);
 
         eprintln!("Downloading from: {}", url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(url)
             .send()
             .context("Failed to send HTTP request")?;
@@ -61,22 +67,22 @@ impl UpdateService {
             ));
         }
 
-        let content = response.bytes()
-            .context("Failed to read response body")?;
+        let content = response.bytes().context("Failed to read response body")?;
 
         // SHA256検証（指定されている場合）
         if let Some(expected_hash) = verify_sha256 {
             self.verify_sha256_hash(&content, &expected_hash)?;
         }
 
-        let dictionary: NameDictionary = serde_json::from_slice(&content)
-            .context("Failed to parse JSON")?;
+        let dictionary: NameDictionary =
+            serde_json::from_slice(&content).context("Failed to parse JSON")?;
 
         eprintln!("Downloaded {} entries", dictionary.count);
         eprintln!("Schema version: {}", dictionary.schema_version);
         eprintln!("Generated at: {}", dictionary.generated_at);
 
-        dictionary.validate()
+        dictionary
+            .validate()
             .map_err(|e| anyhow::anyhow!("Validation failed: {}", e))?;
 
         if dry_run {
@@ -99,18 +105,19 @@ impl UpdateService {
         let mut temp_file = fs::File::create(&temp_path)
             .with_context(|| format!("Failed to create temp file: {}", temp_path.display()))?;
 
-        temp_file.write_all(content)
+        temp_file
+            .write_all(content)
             .with_context(|| format!("Failed to write to temp file: {}", temp_path.display()))?;
 
-        temp_file.sync_all()
-            .context("Failed to sync temp file")?;
+        temp_file.sync_all().context("Failed to sync temp file")?;
 
-        fs::rename(&temp_path, &data_path)
-            .with_context(|| format!(
+        fs::rename(&temp_path, data_path).with_context(|| {
+            format!(
                 "Failed to rename {} to {}",
                 temp_path.display(),
                 data_path.display()
-            ))?;
+            )
+        })?;
 
         Ok(())
     }
@@ -138,9 +145,9 @@ impl UpdateService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
-    use chrono::Utc;
     use crate::models::NameEntry;
+    use chrono::Utc;
+    use tempfile::tempdir;
 
     #[test]
     fn test_update_service_creation() {
@@ -210,7 +217,12 @@ mod tests {
 
         let result = service.verify_sha256_hash(content, wrong_hash);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("SHA256 verification failed"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("SHA256 verification failed")
+        );
     }
 
     #[test]
