@@ -67,23 +67,24 @@ impl DataLoader {
     }
 
     /// データファイルのパスを取得
-    #[allow(dead_code)]  // updateコマンドで使用予定
+    #[allow(dead_code)] // updateコマンドで使用予定
     pub fn data_path(&self) -> &Path {
         &self.data_path
     }
 
     /// データディレクトリの存在を保証（なければ作成）
-    #[allow(dead_code)]  // updateコマンドで使用予定
+    #[allow(dead_code)] // updateコマンドで使用予定
     pub fn ensure_data_dir(&self) -> Result<()> {
         if let Some(parent) = self.data_path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create data directory: {}", parent.display()))?;
+            fs::create_dir_all(parent).with_context(|| {
+                format!("Failed to create data directory: {}", parent.display())
+            })?;
         }
         Ok(())
     }
 
     /// データファイルが存在するかチェック
-    #[allow(dead_code)]  // updateコマンドで使用予定
+    #[allow(dead_code)] // updateコマンドで使用予定
     pub fn data_exists(&self) -> bool {
         self.data_path.exists()
     }
@@ -140,7 +141,12 @@ mod tests {
 
         let result = loader.load_dictionary();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Data file not found"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Data file not found")
+        );
     }
 
     #[test]
@@ -181,7 +187,11 @@ mod tests {
     #[test]
     fn test_ensure_data_dir() {
         let temp_dir = tempdir().unwrap();
-        let test_path = temp_dir.path().join("nested").join("dir").join("names.json");
+        let test_path = temp_dir
+            .path()
+            .join("nested")
+            .join("dir")
+            .join("names.json");
         let loader = DataLoader::with_path(&test_path);
 
         // ディレクトリ作成が成功することを確認
@@ -190,7 +200,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]  // Unix系OSでのみ実行
+    #[cfg(unix)] // Unix系OSでのみ実行
     fn test_ensure_data_dir_permission_error() {
         use std::os::unix::fs::PermissionsExt;
 
@@ -200,7 +210,7 @@ mod tests {
 
         // 書き込み権限を削除
         let mut perms = fs::metadata(&protected_dir).unwrap().permissions();
-        perms.set_mode(0o555);  // 読み取り専用
+        perms.set_mode(0o555); // 読み取り専用
         fs::set_permissions(&protected_dir, perms).unwrap();
 
         let test_path = protected_dir.join("subdir").join("names.json");
@@ -209,7 +219,12 @@ mod tests {
         // エラーが発生することを確認
         let result = loader.ensure_data_dir();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Failed to create data directory"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Failed to create data directory")
+        );
 
         // クリーンアップ：権限を戻す
         let mut perms = fs::metadata(&protected_dir).unwrap().permissions();

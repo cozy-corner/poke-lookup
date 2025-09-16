@@ -25,21 +25,21 @@ impl SearchService {
     }
 
     /// 新しい検索サービスインスタンスを作成（デフォルトパス使用）
-    #[allow(dead_code)]  // updateコマンドで使用予定
+    #[allow(dead_code)] // updateコマンドで使用予定
     pub fn new() -> Result<Self> {
         let loader = DataLoader::new()?;
         Self::from_loader(&loader)
     }
 
     /// カスタムパスから検索サービスを作成
-    #[allow(dead_code)]  // CLIインターフェースで使用予定
+    #[allow(dead_code)] // CLIインターフェースで使用予定
     pub fn with_path<P: Into<std::path::PathBuf>>(path: P) -> Result<Self> {
         let loader = DataLoader::with_path(path);
         Self::from_loader(&loader)
     }
 
     /// 日本語名から英名を検索（完全一致）
-    #[allow(dead_code)]  // CLIインターフェースで使用予定
+    #[allow(dead_code)] // CLIインターフェースで使用予定
     pub fn search_exact(&self, japanese_name: &str) -> Option<&str> {
         self.name_map.get(japanese_name).map(|s| s.as_str())
     }
@@ -59,7 +59,7 @@ impl SearchService {
     }
 
     /// 検索可能な全エントリ数を取得
-    #[allow(dead_code)]  // 更新機能で使用予定
+    #[allow(dead_code)] // 更新機能で使用予定
     pub fn entry_count(&self) -> usize {
         self.name_map.len()
     }
@@ -72,7 +72,6 @@ impl SearchService {
             .collect()
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -104,9 +103,8 @@ mod tests {
     fn test_search_exact_not_found() {
         let service = create_test_service();
         assert_eq!(service.search_exact("ミュウツー"), None);
-        assert_eq!(service.search_exact("ピカ"), None);  // 部分一致はしない
+        assert_eq!(service.search_exact("ピカ"), None); // 部分一致はしない
     }
-
 
     #[test]
     fn test_entry_count() {

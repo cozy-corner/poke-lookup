@@ -36,7 +36,7 @@ impl InteractiveSelector {
     /// 戻り値: Ok(Some(english_name)) - 選択成功
     ///         Ok(None) - ユーザーキャンセル
     ///         Err - エラー発生
-    #[allow(dead_code)]  // CLIインターフェースで使用予定
+    #[allow(dead_code)] // CLIインターフェースで使用予定
     pub fn select_interactive(&self, query: &str) -> Result<Option<String>> {
         // まず完全一致を試す
         if let Some(exact) = self.search_service.search_exact(query) {
@@ -56,7 +56,7 @@ impl InteractiveSelector {
     }
 
     /// 全候補からインタラクティブ選択（空クエリ時）
-    #[allow(dead_code)]  // CLIインターフェースで使用予定
+    #[allow(dead_code)] // CLIインターフェースで使用予定
     pub fn select_from_all(&self) -> Result<Option<String>> {
         let all_entries = self.search_service.all_entries();
         self.run_skim_selection(all_entries, "")
@@ -88,12 +88,7 @@ impl InteractiveSelector {
             .preview_window(Some("down:3:wrap"))
             .query(Some(initial_query))
             .prompt(Some("ポケモンを選択: "))
-            .bind(vec![
-                "ctrl-n:down",
-                "ctrl-p:up",
-                "ctrl-j:down",
-                "ctrl-k:up",
-            ])
+            .bind(vec!["ctrl-n:down", "ctrl-p:up", "ctrl-j:down", "ctrl-k:up"])
             .build()
             .context("Failed to build skim options")?;
 
