@@ -11,10 +11,23 @@ from datetime import datetime, timezone
 from typing import List, Dict, Optional
 import urllib.request
 
-def fetch_json(url: str) -> dict:
-    """URLからJSONデータを取得"""
-    with urllib.request.urlopen(url) as response:
-        return json.loads(response.read())
+def fetch_json(url: str, max_retries: int = 3) -> dict:
+    """URLからJSONデータを取得（リトライ機能付き）"""
+    last_error = None
+
+    for attempt in range(max_retries):
+        try:
+            with urllib.request.urlopen(url) as response:
+                return json.loads(response.read())
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                print(f'  Retry {attempt + 1}/{max_retries - 1}: {e}', file=sys.stderr)
+                time.sleep(2)  # 2秒待機してリトライ
+            continue
+
+    # 全てのリトライが失敗した場合
+    raise last_error
 
 def get_name_pair(species_data: dict) -> Optional[Dict[str, str]]:
     """種データから日本語名と英名のペアを抽出"""
@@ -51,6 +64,7 @@ def main():
     species_list = fetch_json(f'{api_base}/pokemon-species?limit={total_count}')
 
     entries = []
+    error_count = 0
     total = len(species_list['results'])
 
     print(f'Processing {total} species...', file=sys.stderr)
@@ -72,7 +86,8 @@ def main():
             if name_pair:
                 entries.append(name_pair)
         except Exception as e:
-            print(f'Warning: Failed to process {species_ref["name"]}: {e}', file=sys.stderr)
+            print(f'Error: Failed to process {species_ref["name"]}: {e}', file=sys.stderr)
+            error_count += 1
             continue
 
     # エントリをソート
@@ -99,6 +114,13 @@ def main():
     with open(output_file, 'rb') as f:
         sha256_hash = hashlib.sha256(f.read()).hexdigest()
     print(f'SHA256: {sha256_hash}', file=sys.stderr)
+
+    # エラーがあった場合は失敗として終了
+    if error_count > 0:
+        print(f'\n❌ Failed: {error_count} errors occurred during processing', file=sys.stderr)
+        sys.exit(1)
+
+    print(f'\n✅ All {total} species processed successfully', file=sys.stderr)
 
 if __name__ == '__main__':
     main()
