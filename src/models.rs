@@ -83,7 +83,10 @@ impl NameDictionary {
         }
 
         if self.count > 10000 {
-            return Err(format!("Entry count {} exceeds maximum limit of 10000", self.count));
+            return Err(format!(
+                "Entry count {} exceeds maximum limit of 10000",
+                self.count
+            ));
         }
 
         Ok(())
@@ -177,12 +180,10 @@ mod tests {
             schema_version: 1,
             generated_at: Utc::now(),
             count: 3,
-            entries: vec![
-                NameEntry {
-                    ja: "ピカチュウ".to_string(),
-                    en: "Pikachu".to_string(),
-                },
-            ],
+            entries: vec![NameEntry {
+                ja: "ピカチュウ".to_string(),
+                en: "Pikachu".to_string(),
+            }],
         };
 
         assert!(dict_invalid.validate_count().is_err());
@@ -228,7 +229,11 @@ mod tests {
         };
 
         assert!(dict.validate_entries().is_err());
-        assert!(dict.validate_entries().unwrap_err().contains("must be at least 1"));
+        assert!(
+            dict.validate_entries()
+                .unwrap_err()
+                .contains("must be at least 1")
+        );
     }
 
     #[test]
@@ -241,6 +246,10 @@ mod tests {
         };
 
         assert!(dict.validate_entries().is_err());
-        assert!(dict.validate_entries().unwrap_err().contains("exceeds maximum limit"));
+        assert!(
+            dict.validate_entries()
+                .unwrap_err()
+                .contains("exceeds maximum limit")
+        );
     }
 }
