@@ -10,33 +10,37 @@ on:
 jobs:
   update-data:
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # タイムアウトを10分に設定（API呼び出しのため）
     permissions:
       contents: write
 
     steps:
-      - name: Generate sample names.json
-        run: |
-          # サンプルデータを生成
-          CURRENT_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          cat > names.json << EOF
-          {
-            "schema_version": 1,
-            "generated_at": "$CURRENT_TIME",
-            "count": 5,
-            "entries": [
-              { "ja": "ピカチュウ", "en": "pikachu" },
-              { "ja": "フシギダネ", "en": "bulbasaur" },
-              { "ja": "ヒトカゲ", "en": "charmander" },
-              { "ja": "ゼニガメ", "en": "squirtle" },
-              { "ja": "キャタピー", "en": "caterpie" }
-            ]
-          }
-          EOF
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Calculate SHA256
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Fetch Pokemon data from PokéAPI
+        run: |
+          echo "Starting Pokemon data fetch from PokéAPI..."
+          python3 .github/scripts/fetch-pokemon-data.py names.json
+          echo "Data fetch completed successfully"
+
+      - name: Calculate SHA256 and get entry count
         run: |
           sha256sum names.json > names.json.sha256
           echo "SHA256_HASH=$(cut -d' ' -f1 names.json.sha256)" >> $GITHUB_ENV
+
+          # JSONからエントリ数を取得
+          ENTRY_COUNT=$(python3 -c "import json; print(json.load(open('names.json'))['count'])")
+          echo "ENTRY_COUNT=$ENTRY_COUNT" >> $GITHUB_ENV
+
+          # 生成日時を取得
+          GENERATED_AT=$(python3 -c "import json; print(json.load(open('names.json'))['generated_at'])")
+          echo "GENERATED_AT=$GENERATED_AT" >> $GITHUB_ENV
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -44,9 +48,10 @@ jobs:
           tag_name: data-${{ github.run_number }}
           name: Pokemon Data Update ${{ github.run_number }}
           body: |
-            Pokemon names data update
+            Pokemon names data update from PokéAPI
 
-            **Entry count:** 5
+            **Entry count:** ${{ env.ENTRY_COUNT }}
+            **Generated at:** ${{ env.GENERATED_AT }}
             **SHA256:** ${{ env.SHA256_HASH }}
 
             Usage: `poke-lookup update`
