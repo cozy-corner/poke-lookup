@@ -5,7 +5,7 @@
 ## 概要
 
 `poke-lookup` は、カタカナのポケモン名を入力すると対応する英名を返すコマンドラインツールです。
-[Pokemiro](https://github.com/zk-phi/pokemiro) などの他ツールと連携して使用できます。
+[Pokémiro](https://miro.com/marketplace/pokemiro/) などの他ツールと連携して使用できます。
 
 ## 特徴
 
@@ -163,4 +163,4 @@ Issue や Pull Request を歓迎します。
 ## 関連プロジェクト
 
 - [PokéAPI](https://pokeapi.co/) - ポケモンデータの提供元
-- [Pokemiro](https://github.com/zk-phi/pokemiro) - 連携可能なツール
+- [Pokémiro](https://miro.com/marketplace/pokemiro/) - Miroボードにポケモンを追加できる連携可能なツール
