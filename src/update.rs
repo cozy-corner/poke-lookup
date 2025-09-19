@@ -172,6 +172,7 @@ mod tests {
             entries: vec![NameEntry {
                 ja: "ピカチュウ".to_string(),
                 en: "Pikachu".to_string(),
+                id: None,
             }],
         };
 
