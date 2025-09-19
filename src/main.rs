@@ -2,9 +2,9 @@ mod data;
 mod interactive;
 mod models;
 mod search;
-mod update;
 #[cfg(feature = "sprites")]
 mod sprite;
+mod update;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
