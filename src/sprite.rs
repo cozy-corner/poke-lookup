@@ -1,11 +1,11 @@
 #[cfg(feature = "sprites")]
 use anyhow::{Context, Result};
 #[cfg(feature = "sprites")]
-use std::path::{Path, PathBuf};
-#[cfg(feature = "sprites")]
 use directories::ProjectDirs;
 #[cfg(feature = "sprites")]
 use reqwest::blocking::Client;
+#[cfg(feature = "sprites")]
+use std::path::{Path, PathBuf};
 
 #[cfg(feature = "sprites")]
 pub struct SpriteService {
@@ -24,8 +24,12 @@ impl SpriteService {
         let cache_dir = project_dirs.data_dir().join("sprites");
 
         if !cache_dir.exists() {
-            std::fs::create_dir_all(&cache_dir)
-                .with_context(|| format!("Failed to create sprite cache directory: {}", cache_dir.display()))?;
+            std::fs::create_dir_all(&cache_dir).with_context(|| {
+                format!(
+                    "Failed to create sprite cache directory: {}",
+                    cache_dir.display()
+                )
+            })?;
         }
 
         let client = Client::builder()
@@ -55,12 +59,10 @@ impl SpriteService {
             return Ok(sprite_path);
         }
 
-        let url = format!(
-            "{}/sprites/pokemon/{}.png",
-            self.base_url, pokemon_id
-        );
+        let url = format!("{}/sprites/pokemon/{}.png", self.base_url, pokemon_id);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .send()
             .with_context(|| format!("Failed to fetch sprite for Pokemon ID {}", pokemon_id))?;
@@ -73,8 +75,7 @@ impl SpriteService {
             ));
         }
 
-        let content = response.bytes()
-            .context("Failed to read sprite data")?;
+        let content = response.bytes().context("Failed to read sprite data")?;
 
         std::fs::write(&sprite_path, content)
             .with_context(|| format!("Failed to save sprite to {}", sprite_path.display()))?;
@@ -85,8 +86,9 @@ impl SpriteService {
     pub fn display_sprite(&self, sprite_path: &Path) -> Result<()> {
         #[cfg(feature = "sprites")]
         {
-            let img = image::open(sprite_path)
-                .with_context(|| format!("Failed to open sprite image: {}", sprite_path.display()))?;
+            let img = image::open(sprite_path).with_context(|| {
+                format!("Failed to open sprite image: {}", sprite_path.display())
+            })?;
 
             let config = viuer::Config {
                 transparent: true,
@@ -118,8 +120,8 @@ impl SpriteService {
 #[cfg(feature = "sprites")]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use std::fs;
+    use tempfile::tempdir;
 
     #[test]
     fn test_new_creates_cache_dir() {
@@ -226,19 +228,15 @@ mod tests {
         let mock_png = vec![
             0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
             0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
-            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-            0x01, 0x00, 0x00, 0x00, 0x00, 0x37, 0x6E, 0xF9,
-            0x24, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41,
-            0x54, 0x78, 0x9C, 0x62, 0x00, 0x00, 0x00, 0x00,
-            0x02, 0x00, 0x01, 0xE5, 0x27, 0xDE, 0xFC, 0x00,
-            0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
-            0x42, 0x60, 0x82
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x37,
+            0x6E, 0xF9, 0x24, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x62,
+            0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0xE5, 0x27, 0xDE, 0xFC, 0x00, 0x00, 0x00,
+            0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
         ];
 
         // Create a mock for Pokemon sprite
         let mock = server.mock(|when, then| {
-            when.method(GET)
-                .path("/sprites/pokemon/25.png");
+            when.method(GET).path("/sprites/pokemon/25.png");
             then.status(200)
                 .header("content-type", "image/png")
                 .body(&mock_png);
@@ -251,11 +249,8 @@ mod tests {
             .build()
             .unwrap();
 
-        let service = SpriteService::with_base_url(
-            temp_dir.path().to_path_buf(),
-            client,
-            server.url(""),
-        );
+        let service =
+            SpriteService::with_base_url(temp_dir.path().to_path_buf(), client, server.url(""));
 
         // Test fetching sprite
         let result = service.fetch_sprite(25);
@@ -279,8 +274,7 @@ mod tests {
 
         // Create a mock that returns 404
         let _mock = server.mock(|when, then| {
-            when.method(GET)
-                .path("/sprites/pokemon/9999.png");
+            when.method(GET).path("/sprites/pokemon/9999.png");
             then.status(404)
                 .header("content-type", "text/html")
                 .body("Not Found");
@@ -299,5 +293,36 @@ mod tests {
 
         // Verify that no file was created
         assert!(!service.get_sprite_path(9999).exists());
+    }
+
+    #[test]
+    fn test_real_sprite_download() {
+        // Test with real PokeAPI URL
+        let service = SpriteService::new().unwrap();
+
+        println!("Cache dir: {:?}", service.cache_dir());
+        println!("Testing real download of Pikachu sprite...");
+
+        let result = service.fetch_sprite(25);
+        match result {
+            Ok(path) => {
+                println!("✅ Downloaded to: {:?}", path);
+                let metadata = std::fs::metadata(&path).unwrap();
+                println!("✅ File size: {} bytes", metadata.len());
+                assert!(path.exists());
+                assert!(metadata.len() > 0);
+
+                // Test viuer display
+                println!("Testing viuer display...");
+                match service.display_sprite(&path) {
+                    Ok(()) => println!("✅ viuer display successful"),
+                    Err(e) => println!("⚠️  viuer display failed: {}", e),
+                }
+            }
+            Err(e) => {
+                println!("❌ Download failed: {}", e);
+                panic!("Real sprite download failed: {}", e);
+            }
+        }
     }
 }
