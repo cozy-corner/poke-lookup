@@ -11,12 +11,14 @@ use crate::models::NameDictionary;
 const DEFAULT_DOWNLOAD_URL: &str =
     "https://github.com/cozy-corner/poke-lookup/releases/latest/download/names.json";
 
+/// ポケモン名辞書データのアップデートを管理するサービス
 pub struct UpdateService {
     data_loader: DataLoader,
     client: Client,
 }
 
 impl UpdateService {
+    /// デフォルトパスでUpdateServiceインスタンスを作成
     pub fn new() -> Result<Self> {
         let data_loader = DataLoader::new()?;
         let client = Client::builder()
@@ -30,6 +32,7 @@ impl UpdateService {
         })
     }
 
+    /// 指定パスでUpdateServiceインスタンスを作成
     pub fn with_path(dict_path: PathBuf) -> Result<Self> {
         let data_loader = DataLoader::with_path(dict_path);
         let client = Client::builder()
@@ -43,6 +46,12 @@ impl UpdateService {
         })
     }
 
+    /// 辞書データをダウンロードして更新
+    ///
+    /// # Arguments
+    /// * `source_url` - ダウンロード元URL（省略時はGitHub Releasesを使用）
+    /// * `verify_sha256` - SHA256ハッシュによる検証（オプション）
+    /// * `dry_run` - trueの場合、ダウンロードと検証のみ実行
     pub fn update(
         &self,
         source_url: Option<String>,

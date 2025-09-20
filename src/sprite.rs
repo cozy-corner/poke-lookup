@@ -9,6 +9,7 @@ use std::collections::HashMap;
 #[cfg(feature = "sprites")]
 use std::path::{Path, PathBuf};
 
+/// スプライト画像の取得・表示を管理するサービス
 #[cfg(feature = "sprites")]
 pub struct SpriteService {
     cache_dir: PathBuf,
@@ -19,6 +20,7 @@ pub struct SpriteService {
 
 #[cfg(feature = "sprites")]
 impl SpriteService {
+    /// 新しいSpriteServiceインスタンスを作成
     pub fn new() -> Result<Self> {
         use crate::data::DataLoader;
 
@@ -59,14 +61,17 @@ impl SpriteService {
         })
     }
 
+    /// 英名からポケモンIDを取得
     pub fn get_pokemon_id(&self, english_name: &str) -> Option<u32> {
         self.id_map.get(english_name).copied()
     }
 
+    /// ポケモンIDからローカルキャッシュのスプライトパスを取得
     pub fn get_sprite_path(&self, pokemon_id: u32) -> PathBuf {
         self.cache_dir.join(format!("{}.png", pokemon_id))
     }
 
+    /// ポケモンのスプライト画像を取得して表示
     pub fn display_sprite_for_pokemon(&self, english_name: &str) -> Result<()> {
         if let Some(pokemon_id) = self.get_pokemon_id(english_name) {
             match self.fetch_sprite(pokemon_id) {
@@ -81,6 +86,7 @@ impl SpriteService {
         Ok(())
     }
 
+    /// PokeAPIからスプライト画像をダウンロード
     pub fn fetch_sprite(&self, pokemon_id: u32) -> Result<PathBuf> {
         let sprite_path = self.get_sprite_path(pokemon_id);
 
@@ -112,6 +118,7 @@ impl SpriteService {
         Ok(sprite_path)
     }
 
+    /// スプライト画像をターミナルに表示
     pub fn display_sprite(&self, sprite_path: &Path) -> Result<()> {
         #[cfg(feature = "sprites")]
         {
