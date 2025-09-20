@@ -157,13 +157,14 @@ mod tests {
             base_url: "http://dummy.example.com".to_string(),
         };
 
-        assert!(!service.has_cached_sprite(25));
-
         let sprite_path = service.get_sprite_path(25);
-        fs::write(sprite_path, b"dummy").unwrap();
+        assert!(!sprite_path.exists());
 
-        assert!(service.has_cached_sprite(25));
-        assert!(!service.has_cached_sprite(26));
+        fs::write(&sprite_path, b"dummy").unwrap();
+        assert!(sprite_path.exists());
+
+        let other_sprite_path = service.get_sprite_path(26);
+        assert!(!other_sprite_path.exists());
     }
 
     #[test]
@@ -176,7 +177,9 @@ mod tests {
             base_url: "http://dummy.example.com".to_string(),
         };
 
-        assert_eq!(service.cache_dir(), cache_path);
+        // Test through get_sprite_path which uses cache_dir
+        let sprite_path = service.get_sprite_path(1);
+        assert!(sprite_path.starts_with(&cache_path));
     }
 
     #[test]
@@ -299,7 +302,7 @@ mod tests {
         // Test with real PokeAPI URL
         let service = SpriteService::new().unwrap();
 
-        println!("Cache dir: {:?}", service.cache_dir());
+        println!("Cache dir: {:?}", service.cache_dir);
         println!("Testing real download of Pikachu sprite...");
 
         let result = service.fetch_sprite(25);
