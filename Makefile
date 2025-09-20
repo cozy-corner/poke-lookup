@@ -1,4 +1,4 @@
-.PHONY: help check check-all lint format build install install-force test setup clean-build test-integration benchmark profile
+.PHONY: help check check-all lint format build install install-force test setup clean-build test-integration benchmark
 
 help:
 	@echo "開発用コマンド:"
@@ -16,7 +16,6 @@ help:
 	@echo "  make clean-build     - ビルド成果物削除"
 	@echo "  make setup           - 開発環境セットアップ"
 	@echo "  make benchmark       - ベンチマーク実行"
-	@echo "  make profile         - プロファイリングビルド"
 	@echo ""
 	@echo "cargo aliasも利用可能: cargo ba, cargo ta, cargo lw など"
 
@@ -63,7 +62,3 @@ test-integration:
 
 benchmark:
 	cargo bench --all-features
-
-profile:
-	cargo build --profile=release-with-debug --all-features
-	@echo "✅ プロファイリング用ビルド完了"
