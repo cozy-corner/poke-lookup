@@ -19,7 +19,7 @@ impl SearchService {
             .context("Failed to load dictionary")?;
 
         let name_map = dictionary.to_hashmap();
-        let entries = dictionary.entries;
+        let entries = dictionary.entries.clone();
 
         Ok(Self { name_map, entries })
     }
