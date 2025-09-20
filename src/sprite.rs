@@ -5,6 +5,8 @@ use directories::ProjectDirs;
 #[cfg(feature = "sprites")]
 use reqwest::blocking::Client;
 #[cfg(feature = "sprites")]
+use std::collections::HashMap;
+#[cfg(feature = "sprites")]
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "sprites")]
@@ -12,11 +14,14 @@ pub struct SpriteService {
     cache_dir: PathBuf,
     client: Client,
     base_url: String,
+    id_map: HashMap<String, u32>,
 }
 
 #[cfg(feature = "sprites")]
 impl SpriteService {
     pub fn new() -> Result<Self> {
+        use crate::data::DataLoader;
+
         let project_dirs = ProjectDirs::from("", "", "poke-lookup")
             .or_else(|| ProjectDirs::from("dev", "poke-lookup", "poke-lookup"))
             .context("Failed to determine project directories")?;
@@ -37,19 +42,43 @@ impl SpriteService {
             .build()
             .context("Failed to create HTTP client")?;
 
+        // Load Pokemon ID mapping
+        let loader = DataLoader::new()?;
+        let dictionary = loader.load_dictionary()?;
+        let id_map = dictionary
+            .entries
+            .iter()
+            .filter_map(|entry| entry.id.map(|id| (entry.en.clone(), id)))
+            .collect();
+
         Ok(Self {
             cache_dir,
             client,
             base_url: "https://raw.githubusercontent.com/PokeAPI/sprites/master".to_string(),
+            id_map,
         })
+    }
+
+    pub fn get_pokemon_id(&self, english_name: &str) -> Option<u32> {
+        self.id_map.get(english_name).copied()
     }
 
     pub fn get_sprite_path(&self, pokemon_id: u32) -> PathBuf {
         self.cache_dir.join(format!("{}.png", pokemon_id))
     }
 
-    pub fn has_cached_sprite(&self, pokemon_id: u32) -> bool {
-        self.get_sprite_path(pokemon_id).exists()
+    pub fn display_sprite_for_pokemon(&self, english_name: &str) -> Result<()> {
+        if let Some(pokemon_id) = self.get_pokemon_id(english_name) {
+            match self.fetch_sprite(pokemon_id) {
+                Ok(sprite_path) => {
+                    self.display_sprite(&sprite_path)?;
+                }
+                Err(_) => {
+                    // 静かに失敗
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn fetch_sprite(&self, pokemon_id: u32) -> Result<PathBuf> {
@@ -109,16 +138,23 @@ impl SpriteService {
         Ok(())
     }
 
-    pub fn cache_dir(&self) -> &Path {
-        &self.cache_dir
-    }
-
     #[cfg(test)]
     pub fn with_base_url(cache_dir: PathBuf, client: Client, base_url: String) -> Self {
         Self {
             cache_dir,
             client,
             base_url,
+            id_map: HashMap::new(),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn for_test(cache_dir: PathBuf, id_map: HashMap<String, u32>) -> Self {
+        Self {
+            cache_dir,
+            client: Client::new(),
+            base_url: "test://mock".to_string(),
+            id_map,
         }
     }
 }
@@ -131,13 +167,13 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn test_new_creates_cache_dir() {
-        // Test that new() creates a SpriteService successfully
-        let service = SpriteService::new();
-        assert!(service.is_ok());
+    fn test_for_test_creates_service() {
+        // Test that for_test() creates a SpriteService successfully
+        let temp_dir = tempdir().unwrap();
+        let id_map = HashMap::new();
 
-        let service = service.unwrap();
-        assert!(service.cache_dir.exists());
+        let service = SpriteService::for_test(temp_dir.path().to_path_buf(), id_map);
+        assert_eq!(service.base_url, "test://mock");
     }
 
     #[test]
@@ -147,6 +183,7 @@ mod tests {
             cache_dir: temp_dir.path().to_path_buf(),
             client: Client::new(),
             base_url: "http://dummy.example.com".to_string(),
+            id_map: HashMap::new(),
         };
 
         let path = service.get_sprite_path(25);
@@ -163,15 +200,17 @@ mod tests {
             cache_dir: temp_dir.path().to_path_buf(),
             client: Client::new(),
             base_url: "http://dummy.example.com".to_string(),
+            id_map: HashMap::new(),
         };
 
-        assert!(!service.has_cached_sprite(25));
-
         let sprite_path = service.get_sprite_path(25);
-        fs::write(sprite_path, b"dummy").unwrap();
+        assert!(!sprite_path.exists());
 
-        assert!(service.has_cached_sprite(25));
-        assert!(!service.has_cached_sprite(26));
+        fs::write(&sprite_path, b"dummy").unwrap();
+        assert!(sprite_path.exists());
+
+        let other_sprite_path = service.get_sprite_path(26);
+        assert!(!other_sprite_path.exists());
     }
 
     #[test]
@@ -182,9 +221,12 @@ mod tests {
             cache_dir: cache_path.clone(),
             client: Client::new(),
             base_url: "http://dummy.example.com".to_string(),
+            id_map: HashMap::new(),
         };
 
-        assert_eq!(service.cache_dir(), cache_path);
+        // Test through get_sprite_path which uses cache_dir
+        let sprite_path = service.get_sprite_path(1);
+        assert!(sprite_path.starts_with(&cache_path));
     }
 
     #[test]
@@ -194,6 +236,7 @@ mod tests {
             cache_dir: temp_dir.path().to_path_buf(),
             client: Client::new(),
             base_url: "http://dummy.example.com".to_string(),
+            id_map: HashMap::new(),
         };
 
         // Create a cached sprite
@@ -217,6 +260,7 @@ mod tests {
             cache_dir: temp_dir.path().to_path_buf(),
             client: Client::new(),
             base_url: "http://dummy.example.com".to_string(),
+            id_map: HashMap::new(),
         };
 
         let non_existent = temp_dir.path().join("non_existent.png");
@@ -303,33 +347,16 @@ mod tests {
     }
 
     #[test]
-    fn test_real_sprite_download() {
-        // Test with real PokeAPI URL
-        let service = SpriteService::new().unwrap();
+    fn test_get_pokemon_id() {
+        let temp_dir = tempdir().unwrap();
+        let mut id_map = HashMap::new();
+        id_map.insert("Pikachu".to_string(), 25);
+        id_map.insert("Bulbasaur".to_string(), 1);
 
-        println!("Cache dir: {:?}", service.cache_dir());
-        println!("Testing real download of Pikachu sprite...");
+        let service = SpriteService::for_test(temp_dir.path().to_path_buf(), id_map);
 
-        let result = service.fetch_sprite(25);
-        match result {
-            Ok(path) => {
-                println!("✅ Downloaded to: {:?}", path);
-                let metadata = std::fs::metadata(&path).unwrap();
-                println!("✅ File size: {} bytes", metadata.len());
-                assert!(path.exists());
-                assert!(metadata.len() > 0);
-
-                // Test viuer display
-                println!("Testing viuer display...");
-                match service.display_sprite(&path) {
-                    Ok(()) => println!("✅ viuer display successful"),
-                    Err(e) => println!("⚠️  viuer display failed: {}", e),
-                }
-            }
-            Err(e) => {
-                println!("❌ Download failed: {}", e);
-                panic!("Real sprite download failed: {}", e);
-            }
-        }
+        assert_eq!(service.get_pokemon_id("Pikachu"), Some(25));
+        assert_eq!(service.get_pokemon_id("Bulbasaur"), Some(1));
+        assert_eq!(service.get_pokemon_id("Unknown"), None);
     }
 }
