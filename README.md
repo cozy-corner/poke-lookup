@@ -12,6 +12,7 @@
 - 🔍 高速な検索（HashMap による O(1) アクセス）
 - 🎯 完全一致で即座に結果を返す
 - 📝 部分一致時はインタラクティブ選択（skim 使用）
+- 🖼️ ターミナル内スプライト表示（オプション機能）
 - 🔄 月次自動データ更新（GitHub Actions）
 - 🔒 SHA256 によるデータ整合性チェック
 - 🌐 PokéAPI 準拠のデータ
@@ -34,11 +35,22 @@ cargo install --path .
 
 これにより `poke-lookup` コマンドがどこからでも実行可能になります。
 
+### スプライト機能付きインストール
+
+ターミナル内でポケモンのスプライト画像を表示したい場合：
+
+```bash
+cargo install --path . --features sprites
+```
+
 ### 手動ビルド（開発用）
 
 ```bash
+# 基本機能のみ
 cargo build --release
-# バイナリは target/release/poke-lookup に生成
+
+# スプライト機能付き
+cargo build --release --features sprites
 ```
 
 ## 初回セットアップ
@@ -66,6 +78,34 @@ $ poke-lookup フシギ
   フシギソウ
   フシギバナ
 ```
+
+### スプライト表示（オプション機能）
+
+スプライト機能付きでビルドした場合、ポケモンの画像をターミナル内に表示できます：
+
+```bash
+# 英名と一緒にスプライトを表示
+$ poke-lookup ピカチュウ --show-sprite
+Pikachu
+[ピカチュウのスプライト画像がターミナルに表示]
+
+# 短縮オプション
+$ poke-lookup ピカチュウ -s
+Pikachu
+[ピカチュウのスプライト画像がターミナルに表示]
+
+# インタラクティブ選択でもスプライト表示
+$ poke-lookup フシギ -s
+# 選択後にスプライトが表示されます
+```
+
+**対応ターミナル:**
+- iTerm2（macOS）
+- Kitty
+- WezTerm
+- その他の画像表示対応ターミナル
+
+**注意:** スプライト機能は `--features sprites` でビルドした場合のみ利用可能です。
 
 ### データ更新
 
@@ -138,12 +178,40 @@ poke-lookup update
 - `Enter`: 選択確定
 - `Ctrl+C` / `Esc`: キャンセル
 
+### スプライト表示されない場合
+
+以下を確認してください：
+
+1. **スプライト機能の有効化**
+   ```bash
+   # スプライト機能付きでビルドされているか確認
+   poke-lookup --help | grep show-sprite
+   ```
+
+2. **対応ターミナルの使用**
+   - iTerm2、Kitty、WezTerm などの画像表示対応ターミナルを使用
+
+3. **初回データダウンロード**
+   ```bash
+   poke-lookup update
+   ```
+
+4. **フィーチャー無効でビルドした場合**
+   ```bash
+   # スプライト機能付きで再ビルド
+   cargo install --path . --features sprites --force
+   ```
+
 ## 開発
 
 ### テスト実行
 
 ```bash
+# 基本機能のテスト
 cargo test
+
+# 全機能のテスト（スプライト機能含む）
+cargo test --all-features
 ```
 
 ### データ取得スクリプト（CI/CD 用）

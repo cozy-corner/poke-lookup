@@ -3,6 +3,7 @@ use anyhow::{Context, Result};
 use std::collections::HashMap;
 
 /// 検索サービス
+#[derive(Clone)]
 pub struct SearchService {
     /// 検索用HashMap（日本語名 -> 英名）
     name_map: HashMap<String, String>,
@@ -11,9 +12,11 @@ pub struct SearchService {
 impl SearchService {
     /// DataLoaderから検索サービスを作成
     pub fn from_loader(loader: &DataLoader) -> Result<Self> {
-        let name_map = loader
-            .load_search_map()
-            .context("Failed to load search map")?;
+        let dictionary = loader
+            .load_dictionary()
+            .context("Failed to load dictionary")?;
+
+        let name_map = dictionary.to_hashmap();
 
         Ok(Self { name_map })
     }
@@ -133,10 +136,12 @@ mod tests {
                 NameEntry {
                     ja: "ピカチュウ".to_string(),
                     en: "Pikachu".to_string(),
+                    id: None,
                 },
                 NameEntry {
                     ja: "フシギダネ".to_string(),
                     en: "Bulbasaur".to_string(),
+                    id: None,
                 },
             ],
         };

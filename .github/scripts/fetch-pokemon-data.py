@@ -32,6 +32,7 @@ def fetch_json(url: str, max_retries: int = 3) -> dict:
 def get_name_pair(species_data: dict) -> Optional[Dict[str, str]]:
     """種データから日本語名と英名のペアを抽出"""
     names = species_data.get('names', [])
+    pokemon_id = species_data.get('id')
 
     ja_name = None
     en_name = None
@@ -43,8 +44,8 @@ def get_name_pair(species_data: dict) -> Optional[Dict[str, str]]:
         elif lang == 'en':
             en_name = name_entry.get('name')
 
-    if ja_name and en_name:
-        return {'ja': ja_name, 'en': en_name}
+    if ja_name and en_name and pokemon_id:
+        return {'ja': ja_name, 'en': en_name, 'id': pokemon_id}
     return None
 
 def main():

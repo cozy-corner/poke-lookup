@@ -45,8 +45,11 @@ jobs:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Run clippy
+      - name: Run clippy (default features)
         run: cargo clippy -- -D warnings
+
+      - name: Run clippy (all features)
+        run: cargo clippy --all-features -- -D warnings
 
   test:
     name: Test
@@ -76,8 +79,11 @@ jobs:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Run tests
+      - name: Run tests (default features)
         run: cargo test --verbose
+
+      - name: Run tests (all features)
+        run: cargo test --all-features --verbose
 
   build:
     name: Build
@@ -107,5 +113,8 @@ jobs:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build
+      - name: Build (default features)
         run: cargo build --release --verbose
+
+      - name: Build (all features)
+        run: cargo build --all-features --release --verbose

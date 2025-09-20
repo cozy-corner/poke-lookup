@@ -22,6 +22,9 @@ pub struct NameEntry {
     pub ja: String,
     /// 英名
     pub en: String,
+    /// ポケモンID（スプライト表示用）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<u32>,
 }
 
 impl NameDictionary {
@@ -128,10 +131,12 @@ mod tests {
                 NameEntry {
                     ja: "ピカチュウ".to_string(),
                     en: "Pikachu".to_string(),
+                    id: None,
                 },
                 NameEntry {
                     ja: "フシギダネ".to_string(),
                     en: "Bulbasaur".to_string(),
+                    id: None,
                 },
             ],
         };
@@ -166,10 +171,12 @@ mod tests {
                 NameEntry {
                     ja: "ピカチュウ".to_string(),
                     en: "Pikachu".to_string(),
+                    id: None,
                 },
                 NameEntry {
                     ja: "フシギダネ".to_string(),
                     en: "Bulbasaur".to_string(),
+                    id: None,
                 },
             ],
         };
@@ -183,6 +190,7 @@ mod tests {
             entries: vec![NameEntry {
                 ja: "ピカチュウ".to_string(),
                 en: "Pikachu".to_string(),
+                id: None,
             }],
         };
 
@@ -198,6 +206,7 @@ mod tests {
             entries: vec![NameEntry {
                 ja: "ピカチュウ".to_string(),
                 en: "Pikachu".to_string(),
+                id: None,
             }],
         };
 
@@ -213,6 +222,7 @@ mod tests {
             entries: vec![NameEntry {
                 ja: "".to_string(),
                 en: "Pikachu".to_string(),
+                id: None,
             }],
         };
 
