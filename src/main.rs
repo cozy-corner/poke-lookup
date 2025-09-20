@@ -2,6 +2,8 @@ mod data;
 mod interactive;
 mod models;
 mod search;
+#[cfg(feature = "sprites")]
+mod sprite;
 mod update;
 
 use anyhow::Result;
@@ -27,6 +29,10 @@ struct Cli {
     /// names.json の明示パス
     #[arg(long = "dict", value_name = "PATH", help = "names.json の明示パス")]
     dict_path: Option<PathBuf>,
+
+    /// スプライト画像を表示
+    #[arg(long = "show-sprite", short = 's', help = "スプライト画像を表示")]
+    show_sprite: bool,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -82,16 +88,20 @@ fn run() -> Result<i32> {
         None => {
             // 検索機能
             if let Some(japanese_name) = cli.japanese_name {
-                search_pokemon(&japanese_name, cli.dict_path)
+                search_pokemon(&japanese_name, cli.dict_path, cli.show_sprite)
             } else {
                 // 引数なしの場合、全候補からインタラクティブ選択
-                search_interactive_all(cli.dict_path)
+                search_interactive_all(cli.dict_path, cli.show_sprite)
             }
         }
     }
 }
 
-fn search_pokemon(japanese_name: &str, dict_path: Option<PathBuf>) -> Result<i32> {
+fn search_pokemon(
+    japanese_name: &str,
+    dict_path: Option<PathBuf>,
+    #[allow(unused_variables)] show_sprite: bool,
+) -> Result<i32> {
     // SearchServiceを初期化
     let search_service = if let Some(path) = dict_path {
         SearchService::with_path(path)?
@@ -100,13 +110,22 @@ fn search_pokemon(japanese_name: &str, dict_path: Option<PathBuf>) -> Result<i32
     };
 
     // インタラクティブセレクターを作成
-    let selector = InteractiveSelector::new(search_service);
+    let selector = InteractiveSelector::new(search_service.clone());
 
     // 検索実行
     match selector.select_interactive(japanese_name)? {
         Some(english_name) => {
             // 成功: 英名を標準出力
             println!("{}", english_name);
+
+            // スプライト表示
+            #[cfg(feature = "sprites")]
+            {
+                if show_sprite {
+                    display_sprite_for_pokemon(&english_name, &search_service)?;
+                }
+            }
+
             Ok(0)
         }
         None => {
@@ -117,7 +136,10 @@ fn search_pokemon(japanese_name: &str, dict_path: Option<PathBuf>) -> Result<i32
     }
 }
 
-fn search_interactive_all(dict_path: Option<PathBuf>) -> Result<i32> {
+fn search_interactive_all(
+    dict_path: Option<PathBuf>,
+    #[allow(unused_variables)] show_sprite: bool,
+) -> Result<i32> {
     // SearchServiceを初期化
     let search_service = if let Some(path) = dict_path {
         SearchService::with_path(path)?
@@ -126,13 +148,22 @@ fn search_interactive_all(dict_path: Option<PathBuf>) -> Result<i32> {
     };
 
     // インタラクティブセレクターを作成
-    let selector = InteractiveSelector::new(search_service);
+    let selector = InteractiveSelector::new(search_service.clone());
 
     // 全候補から選択
     match selector.select_from_all()? {
         Some(english_name) => {
             // 成功: 英名を標準出力
             println!("{}", english_name);
+
+            // スプライト表示
+            #[cfg(feature = "sprites")]
+            {
+                if show_sprite {
+                    display_sprite_for_pokemon(&english_name, &search_service)?;
+                }
+            }
+
             Ok(0)
         }
         None => {
@@ -169,4 +200,21 @@ fn handle_update(
             Ok(1)
         }
     }
+}
+
+#[cfg(feature = "sprites")]
+fn display_sprite_for_pokemon(english_name: &str, _search_service: &SearchService) -> Result<()> {
+    use crate::sprite::SpriteService;
+
+    let sprite_service = SpriteService::new()?;
+    sprite_service.display_sprite_for_pokemon(english_name)?;
+
+    Ok(())
+}
+
+#[cfg(not(feature = "sprites"))]
+#[allow(dead_code)]
+fn display_sprite_for_pokemon(_english_name: &str, _search_service: &SearchService) -> Result<()> {
+    eprintln!("スプライト機能は無効です。--features sprites でビルドしてください。");
+    Ok(())
 }
