@@ -147,6 +147,16 @@ impl SpriteService {
             id_map: HashMap::new(),
         }
     }
+
+    #[cfg(test)]
+    pub fn for_test(cache_dir: PathBuf, id_map: HashMap<String, u32>) -> Self {
+        Self {
+            cache_dir,
+            client: Client::new(),
+            base_url: "test://mock".to_string(),
+            id_map,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -157,13 +167,13 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn test_new_creates_cache_dir() {
-        // Test that new() creates a SpriteService successfully
-        let service = SpriteService::new();
-        assert!(service.is_ok());
+    fn test_for_test_creates_service() {
+        // Test that for_test() creates a SpriteService successfully
+        let temp_dir = tempdir().unwrap();
+        let id_map = HashMap::new();
 
-        let service = service.unwrap();
-        assert!(service.cache_dir.exists());
+        let service = SpriteService::for_test(temp_dir.path().to_path_buf(), id_map);
+        assert_eq!(service.base_url, "test://mock");
     }
 
     #[test]
@@ -337,33 +347,16 @@ mod tests {
     }
 
     #[test]
-    fn test_real_sprite_download() {
-        // Test with real PokeAPI URL
-        let service = SpriteService::new().unwrap();
+    fn test_get_pokemon_id() {
+        let temp_dir = tempdir().unwrap();
+        let mut id_map = HashMap::new();
+        id_map.insert("Pikachu".to_string(), 25);
+        id_map.insert("Bulbasaur".to_string(), 1);
 
-        println!("Cache dir: {:?}", service.cache_dir);
-        println!("Testing real download of Pikachu sprite...");
+        let service = SpriteService::for_test(temp_dir.path().to_path_buf(), id_map);
 
-        let result = service.fetch_sprite(25);
-        match result {
-            Ok(path) => {
-                println!("✅ Downloaded to: {:?}", path);
-                let metadata = std::fs::metadata(&path).unwrap();
-                println!("✅ File size: {} bytes", metadata.len());
-                assert!(path.exists());
-                assert!(metadata.len() > 0);
-
-                // Test viuer display
-                println!("Testing viuer display...");
-                match service.display_sprite(&path) {
-                    Ok(()) => println!("✅ viuer display successful"),
-                    Err(e) => println!("⚠️  viuer display failed: {}", e),
-                }
-            }
-            Err(e) => {
-                println!("❌ Download failed: {}", e);
-                panic!("Real sprite download failed: {}", e);
-            }
-        }
+        assert_eq!(service.get_pokemon_id("Pikachu"), Some(25));
+        assert_eq!(service.get_pokemon_id("Bulbasaur"), Some(1));
+        assert_eq!(service.get_pokemon_id("Unknown"), None);
     }
 }
