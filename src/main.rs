@@ -119,8 +119,11 @@ fn search_pokemon(
             println!("{}", english_name);
 
             // スプライト表示
-            if show_sprite {
-                display_sprite_for_pokemon(&english_name, &search_service)?;
+            #[cfg(feature = "sprites")]
+            {
+                if show_sprite {
+                    display_sprite_for_pokemon(&english_name, &search_service)?;
+                }
             }
 
             Ok(0)
@@ -151,8 +154,11 @@ fn search_interactive_all(dict_path: Option<PathBuf>, show_sprite: bool) -> Resu
             println!("{}", english_name);
 
             // スプライト表示
-            if show_sprite {
-                display_sprite_for_pokemon(&english_name, &search_service)?;
+            #[cfg(feature = "sprites")]
+            {
+                if show_sprite {
+                    display_sprite_for_pokemon(&english_name, &search_service)?;
+                }
             }
 
             Ok(0)
