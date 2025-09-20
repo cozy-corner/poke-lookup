@@ -48,7 +48,6 @@ impl SpriteService {
         self.cache_dir.join(format!("{}.png", pokemon_id))
     }
 
-
     pub fn fetch_sprite(&self, pokemon_id: u32) -> Result<PathBuf> {
         let sprite_path = self.get_sprite_path(pokemon_id);
 
@@ -105,7 +104,6 @@ impl SpriteService {
         }
         Ok(())
     }
-
 
     #[cfg(test)]
     pub fn with_base_url(cache_dir: PathBuf, client: Client, base_url: String) -> Self {
