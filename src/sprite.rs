@@ -86,6 +86,7 @@ impl SpriteService {
     pub fn display_sprite(&self, sprite_path: &Path) -> Result<()> {
         #[cfg(feature = "sprites")]
         {
+            // Try viuer first - it handles terminal detection automatically
             let img = image::open(sprite_path).with_context(|| {
                 format!("Failed to open sprite image: {}", sprite_path.display())
             })?;
@@ -96,8 +97,14 @@ impl SpriteService {
                 ..Default::default()
             };
 
-            viuer::print(&img, &config)
-                .map_err(|e| anyhow::anyhow!("Failed to display sprite: {}", e))?;
+            match viuer::print(&img, &config) {
+                Ok(_) => {}
+                Err(e) => {
+                    // Fallback to text if viuer fails
+                    println!("🖼️  Sprite saved at: {}", sprite_path.display());
+                    println!("   (Terminal image display not available: {})", e);
+                }
+            }
         }
         Ok(())
     }
