@@ -7,8 +7,6 @@ use std::collections::HashMap;
 pub struct SearchService {
     /// 検索用HashMap（日本語名 -> 英名）
     name_map: HashMap<String, String>,
-    /// 完全なエントリデータ（ID取得用）
-    entries: Vec<crate::models::NameEntry>,
 }
 
 impl SearchService {
@@ -19,18 +17,14 @@ impl SearchService {
             .context("Failed to load dictionary")?;
 
         let name_map = dictionary.to_hashmap();
-        let entries = dictionary.entries.clone();
 
-        Ok(Self { name_map, entries })
+        Ok(Self { name_map })
     }
 
     /// HashMapから直接検索サービスを作成（テスト用）
     #[allow(dead_code)]
     pub fn from_name_map(name_map: HashMap<String, String>) -> Self {
-        Self {
-            name_map,
-            entries: Vec::new(),
-        }
+        Self { name_map }
     }
 
     /// 新しい検索サービスインスタンスを作成（デフォルトパス使用）
@@ -80,14 +74,6 @@ impl SearchService {
             .map(|(ja, en)| (ja.as_str(), en.as_str()))
             .collect()
     }
-
-    /// 英名からポケモンIDを取得
-    pub fn get_pokemon_id(&self, english_name: &str) -> Option<u32> {
-        self.entries
-            .iter()
-            .find(|entry| entry.en == english_name)
-            .and_then(|entry| entry.id)
-    }
 }
 
 #[cfg(test)]
@@ -106,35 +92,7 @@ mod tests {
         name_map.insert("フシギバナ".to_string(), "Venusaur".to_string());
         name_map.insert("ヒトカゲ".to_string(), "Charmander".to_string());
 
-        let entries = vec![
-            NameEntry {
-                ja: "ピカチュウ".to_string(),
-                en: "Pikachu".to_string(),
-                id: Some(25),
-            },
-            NameEntry {
-                ja: "フシギダネ".to_string(),
-                en: "Bulbasaur".to_string(),
-                id: Some(1),
-            },
-            NameEntry {
-                ja: "フシギソウ".to_string(),
-                en: "Ivysaur".to_string(),
-                id: Some(2),
-            },
-            NameEntry {
-                ja: "フシギバナ".to_string(),
-                en: "Venusaur".to_string(),
-                id: Some(3),
-            },
-            NameEntry {
-                ja: "ヒトカゲ".to_string(),
-                en: "Charmander".to_string(),
-                id: Some(4),
-            },
-        ];
-
-        SearchService { name_map, entries }
+        SearchService { name_map }
     }
 
     #[test]
@@ -196,13 +154,5 @@ mod tests {
 
         assert_eq!(service.search_exact("ピカチュウ"), Some("Pikachu"));
         assert_eq!(service.entry_count(), 2);
-    }
-
-    #[test]
-    fn test_get_pokemon_id() {
-        let service = create_test_service();
-        assert_eq!(service.get_pokemon_id("Pikachu"), Some(25));
-        assert_eq!(service.get_pokemon_id("Bulbasaur"), Some(1));
-        assert_eq!(service.get_pokemon_id("Unknown"), None);
     }
 }

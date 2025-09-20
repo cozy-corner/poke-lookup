@@ -100,7 +100,7 @@ fn run() -> Result<i32> {
 fn search_pokemon(
     japanese_name: &str,
     dict_path: Option<PathBuf>,
-    show_sprite: bool,
+    #[allow(unused_variables)] show_sprite: bool,
 ) -> Result<i32> {
     // SearchServiceを初期化
     let search_service = if let Some(path) = dict_path {
@@ -136,7 +136,10 @@ fn search_pokemon(
     }
 }
 
-fn search_interactive_all(dict_path: Option<PathBuf>, show_sprite: bool) -> Result<i32> {
+fn search_interactive_all(
+    dict_path: Option<PathBuf>,
+    #[allow(unused_variables)] show_sprite: bool,
+) -> Result<i32> {
     // SearchServiceを初期化
     let search_service = if let Some(path) = dict_path {
         SearchService::with_path(path)?
@@ -200,28 +203,17 @@ fn handle_update(
 }
 
 #[cfg(feature = "sprites")]
-fn display_sprite_for_pokemon(english_name: &str, search_service: &SearchService) -> Result<()> {
+fn display_sprite_for_pokemon(english_name: &str, _search_service: &SearchService) -> Result<()> {
     use crate::sprite::SpriteService;
 
-    // SearchServiceから直接ポケモンIDを取得
-    if let Some(pokemon_id) = search_service.get_pokemon_id(english_name) {
-        let sprite_service = SpriteService::new()?;
-        match sprite_service.fetch_sprite(pokemon_id) {
-            Ok(sprite_path) => {
-                sprite_service.display_sprite(&sprite_path)?;
-            }
-            Err(_) => {
-                // 静かに失敗
-            }
-        }
-    } else {
-        // 静かに失敗
-    }
+    let sprite_service = SpriteService::new()?;
+    sprite_service.display_sprite_for_pokemon(english_name)?;
 
     Ok(())
 }
 
 #[cfg(not(feature = "sprites"))]
+#[allow(dead_code)]
 fn display_sprite_for_pokemon(_english_name: &str, _search_service: &SearchService) -> Result<()> {
     eprintln!("スプライト機能は無効です。--features sprites でビルドしてください。");
     Ok(())
