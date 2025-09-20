@@ -1,0 +1,43 @@
+#!/bin/sh
+
+set -e
+
+# Check if only documentation files are being committed
+staged_files=$(git diff --cached --name-only --diff-filter=ACM)
+if [ -z "$staged_files" ]; then
+    # No files staged for commit
+    exit 0
+fi
+
+# Check if there are any non-documentation files
+non_docs=$(echo "$staged_files" | grep -v '\.md$' | grep -v '\.txt$' | grep -v '^docs/' || true)
+
+if [ -z "$non_docs" ]; then
+    echo "📝 Only documentation files detected. Skipping pre-commit checks."
+    exit 0
+fi
+
+echo "🔍 Running pre-commit checks..."
+
+echo "📋 Running cargo fmt --check..."
+cargo fmt --all -- --check
+if [ $? -ne 0 ]; then
+    echo "❌ Formatting errors found. Run 'cargo fmt' to fix them."
+    exit 1
+fi
+
+echo "🔧 Running cargo clippy..."
+cargo clippy --all-targets --all-features -- -D warnings
+if [ $? -ne 0 ]; then
+    echo "❌ Clippy warnings found. Please fix them before committing."
+    exit 1
+fi
+
+echo "🧪 Running cargo test..."
+cargo test
+if [ $? -ne 0 ]; then
+    echo "❌ Tests failed. Please fix them before committing."
+    exit 1
+fi
+
+echo "✅ All pre-commit checks passed!"
