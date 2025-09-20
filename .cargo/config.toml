@@ -1,0 +1,48 @@
+[alias]
+# ビルド
+b = "build"
+ba = "build --all-features"
+br = "build --release --all-features"
+bs = "build --features sprites"
+
+# テスト
+t = "test"
+ta = "test --all-features"
+ts = "test --features sprites"
+tn = "test --no-default-features"
+
+# チェック
+c = "check"
+ca = "check --all-features"
+
+# Lint
+l = "clippy"
+la = "clippy --all-features"
+lw = "clippy --all-features -- -D warnings"
+
+# フォーマット
+f = "fmt"
+fc = "fmt --check"
+
+# ドキュメント
+d = "doc --no-deps"
+da = "doc --no-deps --all-features"
+do = "doc --no-deps --open --all-features"
+
+# 実行
+r = "run --"
+ra = "run --all-features --"
+rr = "run --release --all-features --"
+rs = "run --features sprites --"
+
+# インストール
+i = "install --path ."
+ia = "install --path . --all-features"
+if = "install --path . --force --all-features"
+il = "install --path . --locked --all-features"
+
+# ユーティリティ
+up = "update"
+tree = "tree --all-features"
+audit = "audit"
+clean = "clean"
