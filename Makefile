@@ -1,4 +1,8 @@
-.PHONY: help check check-all lint format build install install-force test setup clean-build test-integration benchmark
+.PHONY: all clean help check check-all lint format build install install-force test setup clean-build benchmark
+
+all: build
+
+clean: clean-build
 
 help:
 	@echo "開発用コマンド:"
@@ -10,7 +14,6 @@ help:
 	@echo "  make test            - テスト実行"
 	@echo "  make install         - ローカルインストール"
 	@echo "  make install-force   - 強制再インストール"
-	@echo "  make test-integration - 統合テスト実行"
 	@echo ""
 	@echo "メンテナンス:"
 	@echo "  make clean-build     - ビルド成果物削除"
@@ -52,13 +55,6 @@ setup:
 clean-build:
 	cargo clean
 	@echo "✅ ビルド成果物削除完了"
-
-test-integration:
-	cargo ta
-	cargo br
-	./target/release/poke-lookup フシギダネ
-	./target/release/poke-lookup ピカチュウ
-	@echo "✅ 統合テスト完了"
 
 benchmark:
 	cargo bench --all-features
