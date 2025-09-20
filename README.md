@@ -53,6 +53,20 @@ cargo build --release
 cargo build --release --features sprites
 ```
 
+### 開発環境のセットアップ
+
+開発に参加する場合は、Git hooksを設定することを推奨します：
+
+```bash
+# Git hooksの設定（pre-commit: format, lint, test）
+./scripts/setup-hooks.sh
+```
+
+これにより、コミット時に自動的に以下のチェックが実行されます：
+- `cargo fmt --check`: コードフォーマット
+- `cargo clippy`: Lintチェック
+- `cargo test`: テスト実行
+
 ## 初回セットアップ
 
 **重要**: 初回実行前にデータファイルのダウンロードが必要です。
