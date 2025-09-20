@@ -98,7 +98,7 @@ impl SpriteService {
             };
 
             match viuer::print(&img, &config) {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => {
                     // Fallback to text if viuer fails
                     println!("🖼️  Sprite saved at: {}", sprite_path.display());
