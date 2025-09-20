@@ -247,8 +247,7 @@ mod tests {
     fn test_get_default_data_path() {
         let result = DataLoader::get_default_data_path();
         // XDGディレクトリが利用可能な場合のみテスト
-        if result.is_ok() {
-            let path = result.unwrap();
+        if let Ok(path) = result {
             assert!(path.to_string_lossy().contains("poke-lookup"));
             assert!(path.file_name().unwrap() == "names.json");
         }
