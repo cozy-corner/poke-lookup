@@ -59,7 +59,6 @@ impl DataLoader {
         Ok(dictionary)
     }
 
-
     /// データファイルのパスを取得
     #[allow(dead_code)] // updateコマンドで使用予定
     pub fn data_path(&self) -> &Path {
