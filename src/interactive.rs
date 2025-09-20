@@ -112,9 +112,12 @@ impl InteractiveSelector {
         if let Some(item) = selected_items.selected_items.first() {
             // 選択されたアイテムから英名を抽出
             let text = item.text();
-            if let Some(arrow_pos) = text.find(" → ") {
-                let english_name = &text[arrow_pos + 4..];
-                return Ok(Some(english_name.to_string()));
+            if text.contains(" → ") {
+                // UTF-8文字境界を考慮して分割
+                let parts: Vec<&str> = text.split(" → ").collect();
+                if parts.len() == 2 {
+                    return Ok(Some(parts[1].trim().to_string()));
+                }
             }
         }
 
