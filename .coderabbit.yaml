@@ -1,0 +1,7 @@
+# CodeRabbit configuration file
+# Documentation: https://docs.coderabbit.ai/reference/yaml-template
+
+reviews:
+  auto_review:
+    # Enable auto reviews on all branches (not just the default branch)
+    base_branches: [".*"]
