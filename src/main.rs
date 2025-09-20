@@ -204,12 +204,12 @@ fn display_sprite_for_pokemon(english_name: &str, search_service: &SearchService
             Ok(sprite_path) => {
                 sprite_service.display_sprite(&sprite_path)?;
             }
-            Err(e) => {
-                eprintln!("スプライトの取得に失敗しました: {}", e);
+            Err(_) => {
+                // 静かに失敗
             }
         }
     } else {
-        eprintln!("このポケモンのスプライトIDが設定されていません");
+        // 静かに失敗
     }
 
     Ok(())
