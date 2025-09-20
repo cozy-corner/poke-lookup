@@ -48,9 +48,6 @@ impl SpriteService {
         self.cache_dir.join(format!("{}.png", pokemon_id))
     }
 
-    pub fn has_cached_sprite(&self, pokemon_id: u32) -> bool {
-        self.get_sprite_path(pokemon_id).exists()
-    }
 
     pub fn fetch_sprite(&self, pokemon_id: u32) -> Result<PathBuf> {
         let sprite_path = self.get_sprite_path(pokemon_id);
@@ -109,9 +106,6 @@ impl SpriteService {
         Ok(())
     }
 
-    pub fn cache_dir(&self) -> &Path {
-        &self.cache_dir
-    }
 
     #[cfg(test)]
     pub fn with_base_url(cache_dir: PathBuf, client: Client, base_url: String) -> Self {

@@ -1,7 +1,6 @@
 use crate::models::NameDictionary;
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -60,11 +59,6 @@ impl DataLoader {
         Ok(dictionary)
     }
 
-    /// 検索用のHashMapを読み込み（キャッシュなし）
-    pub fn load_search_map(&self) -> Result<HashMap<String, String>> {
-        let dictionary = self.load_dictionary()?;
-        Ok(dictionary.to_hashmap())
-    }
 
     /// データファイルのパスを取得
     #[allow(dead_code)] // updateコマンドで使用予定
@@ -179,7 +173,8 @@ mod tests {
         fs::write(&test_file, json_content).unwrap();
 
         let loader = DataLoader::with_path(&test_file);
-        let search_map = loader.load_search_map().unwrap();
+        let dictionary = loader.load_dictionary().unwrap();
+        let search_map = dictionary.to_hashmap();
 
         assert_eq!(search_map.get("ピカチュウ"), Some(&"Pikachu".to_string()));
         assert_eq!(search_map.get("フシギダネ"), Some(&"Bulbasaur".to_string()));
