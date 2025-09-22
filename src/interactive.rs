@@ -1,6 +1,15 @@
 use crate::search::SearchService;
+#[cfg(feature = "sprites")]
+use crate::sprite::SpriteService;
 use anyhow::{Context, Result};
+#[cfg(feature = "sprites")]
+use crossterm::{
+    event::{self, Event, KeyCode, KeyEvent},
+    terminal::{disable_raw_mode, enable_raw_mode},
+};
 use skim::prelude::*;
+#[cfg(feature = "sprites")]
+use std::io::{self, Write};
 use std::sync::Arc;
 
 /// インタラクティブ選択のためのアイテム
@@ -24,12 +33,21 @@ impl SkimItem for PokemonItem {
 /// インタラクティブ選択機能
 pub struct InteractiveSelector {
     search_service: SearchService,
+    #[cfg(feature = "sprites")]
+    sprite_service: Option<SpriteService>,
 }
 
 impl InteractiveSelector {
     /// 検索サービスからセレクターを作成
     pub fn new(search_service: SearchService) -> Self {
-        Self { search_service }
+        #[cfg(feature = "sprites")]
+        let sprite_service = SpriteService::new().ok();
+
+        Self {
+            search_service,
+            #[cfg(feature = "sprites")]
+            sprite_service,
+        }
     }
 
     /// インタラクティブ選択を開始
@@ -50,7 +68,7 @@ impl InteractiveSelector {
             0 => Ok(None), // 候補なし
             _ => {
                 // 候補があればインタラクティブ選択（1件でも）
-                self.run_skim_selection(partial_matches, query)
+                self.run_skim_selection(&partial_matches, query)
             }
         }
     }
@@ -59,18 +77,18 @@ impl InteractiveSelector {
     #[allow(dead_code)] // CLIインターフェースで使用予定
     pub fn select_from_all(&self) -> Result<Option<String>> {
         let all_entries = self.search_service.all_entries();
-        self.run_skim_selection(all_entries, "")
+        self.run_skim_selection(&all_entries, "")
     }
 
     /// skimを使用したインタラクティブ選択
     fn run_skim_selection(
         &self,
-        candidates: Vec<(&str, &str)>,
+        candidates: &[(&str, &str)],
         initial_query: &str,
     ) -> Result<Option<String>> {
         // skim用のアイテムを作成
         let items: Vec<Arc<dyn SkimItem>> = candidates
-            .into_iter()
+            .iter()
             .map(|(ja, en)| {
                 Arc::new(PokemonItem {
                     japanese: ja.to_string(),
@@ -116,12 +134,70 @@ impl InteractiveSelector {
                 // UTF-8文字境界を考慮して分割
                 let parts: Vec<&str> = text.split(" → ").collect();
                 if parts.len() == 2 {
-                    return Ok(Some(parts[1].trim().to_string()));
+                    let english_name = parts[1].trim().to_string();
+
+                    // スプライト表示とナビゲーション処理
+                    #[cfg(feature = "sprites")]
+                    if let Some(ref sprite_service) = self.sprite_service {
+                        if let Some(final_selection) = self.show_sprite_with_navigation(
+                            &english_name,
+                            sprite_service,
+                            candidates,
+                            initial_query,
+                        )? {
+                            return Ok(Some(final_selection));
+                        } else {
+                            // ESCが押されたら再選択のためにループに戻る
+                            return self.run_skim_selection(candidates, initial_query);
+                        }
+                    }
+
+                    return Ok(Some(english_name));
                 }
             }
         }
 
         Ok(None)
+    }
+
+    /// スプライトを表示して、ESC/ENTERでナビゲーション
+    #[cfg(feature = "sprites")]
+    fn show_sprite_with_navigation(
+        &self,
+        english_name: &str,
+        sprite_service: &SpriteService,
+        _candidates: &[(&str, &str)],
+        _initial_query: &str,
+    ) -> Result<Option<String>> {
+        // スプライトを表示
+        sprite_service.display_sprite_for_pokemon(english_name)?;
+
+        // ナビゲーション指示を表示
+        println!("\n📌 {} が選択されました", english_name);
+        println!("   [Enter] 確定  [ESC] 再選択");
+        io::stdout().flush()?;
+
+        // raw modeを有効化してキー入力を待つ
+        enable_raw_mode()?;
+
+        let result = loop {
+            if let Event::Key(KeyEvent { code, .. }) = event::read()? {
+                match code {
+                    KeyCode::Enter => {
+                        disable_raw_mode()?;
+                        break Some(english_name.to_string());
+                    }
+                    KeyCode::Esc => {
+                        disable_raw_mode()?;
+                        println!("\n🔄 再選択します...");
+                        break None;
+                    }
+                    _ => {}
+                }
+            }
+        };
+
+        Ok(result)
     }
 }
 
