@@ -43,6 +43,8 @@ cargo install --path .
 cargo install --path . --features sprites
 ```
 
+https://github.com/user-attachments/assets/7f80ef19-2117-4c19-b8a8-96bdf55d6ee3
+
 ### 手動ビルド（開発用）
 
 ```bash
