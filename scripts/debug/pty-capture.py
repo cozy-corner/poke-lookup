@@ -35,13 +35,15 @@ def main() -> int:
     if not cmd:
         p.error("コマンドが指定されていません")
 
+    winsz = struct.pack("HHHH", args.rows, args.cols, 0, 0)
+
     pid, fd = pty.fork()
     if pid == 0:
+        # 親が設定するより先に子が走り出すと、skim / viuer が既定のサイズを
+        # 見てしまう。exec の前に子自身の端末へ適用する。
+        fcntl.ioctl(0, termios.TIOCSWINSZ, winsz)
         os.execvp(cmd[0], cmd)
         os._exit(127)
-
-    fcntl.ioctl(fd, termios.TIOCSWINSZ,
-                struct.pack("HHHH", args.rows, args.cols, 0, 0))
 
     chunks: list[bytes] = []
     pending = list(args.send)
