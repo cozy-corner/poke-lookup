@@ -1,6 +1,7 @@
 mod data;
 mod interactive;
 mod models;
+mod romaji;
 mod search;
 #[cfg(feature = "sprites")]
 mod sprite;
