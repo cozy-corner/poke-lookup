@@ -9,10 +9,6 @@ use std::collections::HashMap;
 #[cfg(feature = "sprites")]
 use std::path::{Path, PathBuf};
 
-/// スプライト表示に使う端末の桁数
-#[cfg(feature = "sprites")]
-const SPRITE_WIDTH: u32 = 32;
-
 /// スプライト画像の取得・表示を管理するサービス
 #[cfg(feature = "sprites")]
 pub struct SpriteService {
@@ -134,10 +130,6 @@ impl SpriteService {
             let config = viuer::Config {
                 transparent: true,
                 absolute_offset: false,
-                // width を渡さないと viuer は端末サイズいっぱいに拡大するため、
-                // 96x96 のスプライトが画面をほぼ埋めてしまう。高さは
-                // アスペクト比から算出され、32 桁なら 16 行に収まる。
-                width: Some(SPRITE_WIDTH),
                 ..Default::default()
             };
 
