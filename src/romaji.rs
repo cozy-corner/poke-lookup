@@ -14,6 +14,69 @@ enum Style {
 
 /// (カタカナ, ヘボン式, 訓令式)
 const SYLLABLES: &[(&str, &str, &str)] = &[
+    // 拗音（2 文字で 1 音）
+    ("キャ", "kya", "kya"),
+    ("キュ", "kyu", "kyu"),
+    ("キョ", "kyo", "kyo"),
+    ("シャ", "sha", "sya"),
+    ("シュ", "shu", "syu"),
+    ("ショ", "sho", "syo"),
+    ("チャ", "cha", "tya"),
+    ("チュ", "chu", "tyu"),
+    ("チョ", "cho", "tyo"),
+    ("ニャ", "nya", "nya"),
+    ("ニュ", "nyu", "nyu"),
+    ("ニョ", "nyo", "nyo"),
+    ("ヒャ", "hya", "hya"),
+    ("ヒュ", "hyu", "hyu"),
+    ("ヒョ", "hyo", "hyo"),
+    ("ミャ", "mya", "mya"),
+    ("ミュ", "myu", "myu"),
+    ("ミョ", "myo", "myo"),
+    ("リャ", "rya", "rya"),
+    ("リュ", "ryu", "ryu"),
+    ("リョ", "ryo", "ryo"),
+    ("ギャ", "gya", "gya"),
+    ("ギュ", "gyu", "gyu"),
+    ("ギョ", "gyo", "gyo"),
+    ("ジャ", "ja", "zya"),
+    ("ジュ", "ju", "zyu"),
+    ("ジョ", "jo", "zyo"),
+    ("ヂャ", "ja", "zya"),
+    ("ヂュ", "ju", "zyu"),
+    ("ヂョ", "jo", "zyo"),
+    ("ビャ", "bya", "bya"),
+    ("ビュ", "byu", "byu"),
+    ("ビョ", "byo", "byo"),
+    ("ピャ", "pya", "pya"),
+    ("ピュ", "pyu", "pyu"),
+    ("ピョ", "pyo", "pyo"),
+    // 外来音（ファイヤー・ウィンディなど実データに存在する）
+    ("ファ", "fa", "fa"),
+    ("フィ", "fi", "fi"),
+    ("フェ", "fe", "fe"),
+    ("フォ", "fo", "fo"),
+    ("フュ", "fyu", "fyu"),
+    ("ウィ", "wi", "wi"),
+    ("ウェ", "we", "we"),
+    ("ウォ", "wo", "wo"),
+    ("ヴァ", "va", "va"),
+    ("ヴィ", "vi", "vi"),
+    ("ヴェ", "ve", "ve"),
+    ("ヴォ", "vo", "vo"),
+    ("ティ", "ti", "ti"),
+    ("ディ", "di", "di"),
+    ("トゥ", "tu", "tu"),
+    ("ドゥ", "du", "du"),
+    ("シェ", "she", "sye"),
+    ("ジェ", "je", "zye"),
+    ("チェ", "che", "tye"),
+    ("ツァ", "tsa", "tsa"),
+    ("ツィ", "tsi", "tsi"),
+    ("ツェ", "tse", "tse"),
+    ("ツォ", "tso", "tso"),
+    ("クァ", "kwa", "kwa"),
+    ("グァ", "gwa", "gwa"),
     ("ア", "a", "a"),
     ("イ", "i", "i"),
     ("ウ", "u", "u"),
@@ -108,14 +171,27 @@ fn lookup(kana: &str, style: Style) -> Option<&'static str> {
 }
 
 fn to_romaji(katakana: &str, style: Style) -> String {
+    let chars: Vec<char> = katakana.chars().collect();
     let mut out = String::new();
-    for c in katakana.chars() {
-        match lookup(&c.to_string(), style) {
+    let mut i = 0;
+
+    while i < chars.len() {
+        // 拗音・外来音は 2 文字で 1 音なので、単カナより先に引く
+        let pair: Option<String> = (i + 1 < chars.len()).then(|| chars[i..i + 2].iter().collect());
+        if let Some(r) = pair.as_deref().and_then(|p| lookup(p, style)) {
+            out.push_str(r);
+            i += 2;
+            continue;
+        }
+
+        match lookup(&chars[i].to_string(), style) {
             Some(r) => out.push_str(r),
             // 変換表にない文字は落とさずそのまま通す
-            None => out.push(c),
+            None => out.push(chars[i]),
         }
+        i += 1;
     }
+
     out
 }
 
@@ -161,5 +237,29 @@ mod tests {
     fn test_unknown_char_passes_through() {
         // 変換表にない文字は落とさずそのまま通す
         assert_eq!(variants("ポリゴン2"), vec!["porigon2"]);
+    }
+
+    #[test]
+    fn test_youon() {
+        assert_eq!(variants("キャ"), vec!["kya"]);
+        assert_eq!(variants("シュ"), vec!["shu", "syu"]);
+        assert_eq!(variants("チョ"), vec!["cho", "tyo"]);
+        assert_eq!(variants("ジャ"), vec!["ja", "zya"]);
+        assert_eq!(variants("リュ"), vec!["ryu"]);
+    }
+
+    #[test]
+    fn test_foreign_sounds() {
+        assert_eq!(variants("ファ"), vec!["fa"]);
+        assert_eq!(variants("ウィ"), vec!["wi"]);
+        assert_eq!(variants("ディ"), vec!["di"]);
+        assert_eq!(variants("ジェ"), vec!["je", "zye"]);
+        assert_eq!(variants("チェ"), vec!["che", "tye"]);
+    }
+
+    #[test]
+    fn test_youon_in_name() {
+        assert_eq!(variants("ピカチュウ"), vec!["pikachuu", "pikatyuu"]);
+        assert_eq!(variants("ウィンディ"), vec!["windi"]);
     }
 }
