@@ -17,12 +17,48 @@ use std::sync::Arc;
 struct PokemonItem {
     japanese: String,
     english: String,
+    /// 一覧に表示する文字列
     display: String,
+    /// skim のマッチ対象。display にローマ字を足したもので、ローマ字は表示されない
+    match_text: String,
 }
 
 impl SkimItem for PokemonItem {
     fn text(&self) -> std::borrow::Cow<'_, str> {
-        self.display.as_str().into()
+        self.match_text.as_str().into()
+    }
+
+    fn display<'a>(&'a self, context: DisplayContext<'a>) -> AnsiString<'a> {
+        // ハイライト位置は match_text 上の位置なので、可視部からはみ出した分を捨てる
+        let visible = self.display.chars().count() as u32;
+        let fragments = match context.matches {
+            Matches::CharIndices(indices) => indices
+                .iter()
+                .map(|&i| i as u32)
+                .filter(|&i| i < visible)
+                .map(|i| (context.highlight_attr, (i, i + 1)))
+                .collect(),
+            Matches::CharRange(start, end) => {
+                let (start, end) = (start as u32, (end as u32).min(visible));
+                if start < end {
+                    vec![(context.highlight_attr, (start, end))]
+                } else {
+                    vec![]
+                }
+            }
+            Matches::ByteRange(start, end) => {
+                let start = context.text[..start].chars().count() as u32;
+                let end = (context.text[..end].chars().count() as u32).min(visible);
+                if start < end {
+                    vec![(context.highlight_attr, (start, end))]
+                } else {
+                    vec![]
+                }
+            }
+            Matches::None => vec![],
+        };
+
+        AnsiString::new_str(&self.display, fragments)
     }
 
     fn preview(&self, _context: PreviewContext) -> ItemPreview {
@@ -90,10 +126,13 @@ impl InteractiveSelector {
         let items: Vec<Arc<dyn SkimItem>> = candidates
             .iter()
             .map(|(ja, en)| {
+                let display = format!("{} → {}", ja, en);
+                let romaji = crate::romaji::variants(ja).join(" ");
                 Arc::new(PokemonItem {
                     japanese: ja.to_string(),
                     english: en.to_string(),
-                    display: format!("{} → {}", ja, en),
+                    match_text: format!("{} {}", display, romaji),
+                    display,
                 }) as Arc<dyn SkimItem>
             })
             .collect();
@@ -223,24 +262,75 @@ mod tests {
         InteractiveSelector::new(search_service)
     }
 
+    fn create_test_item() -> PokemonItem {
+        let display = "フシギダネ → Bulbasaur".to_string();
+        PokemonItem {
+            japanese: "フシギダネ".to_string(),
+            english: "Bulbasaur".to_string(),
+            match_text: format!("{} fushigidane husigidane", display),
+            display,
+        }
+    }
+
     #[test]
-    fn test_pokemon_item_text() {
-        let item = PokemonItem {
-            japanese: "ピカチュウ".to_string(),
-            english: "Pikachu".to_string(),
-            display: "ピカチュウ → Pikachu".to_string(),
+    fn test_text_contains_romaji() {
+        let item = create_test_item();
+        let text = item.text();
+        assert!(text.contains("フシギダネ"));
+        assert!(text.contains("Bulbasaur"));
+        assert!(text.contains("fushigidane"));
+        assert!(text.contains("husigidane"));
+    }
+
+    #[test]
+    fn test_display_hides_romaji() {
+        let item = create_test_item();
+        let context = DisplayContext {
+            text: &item.match_text,
+            score: 0,
+            matches: Matches::None,
+            container_width: 80,
+            highlight_attr: Default::default(),
         };
 
-        assert_eq!(item.text(), "ピカチュウ → Pikachu");
+        assert_eq!(item.display(context).stripped(), "フシギダネ → Bulbasaur");
+    }
+
+    #[test]
+    fn test_display_drops_highlight_outside_visible_part() {
+        let item = create_test_item();
+        // 隠しローマ字の位置だけにマッチした場合、可視部にハイライトは付かない
+        let hidden = item.display.chars().count() + 2;
+        let context = DisplayContext {
+            text: &item.match_text,
+            score: 0,
+            matches: Matches::CharIndices(&[hidden]),
+            container_width: 80,
+            highlight_attr: Default::default(),
+        };
+
+        let rendered = item.display(context);
+        assert_eq!(rendered.stripped(), "フシギダネ → Bulbasaur");
+        assert!(!rendered.has_attrs());
+    }
+
+    #[test]
+    fn test_display_keeps_highlight_inside_visible_part() {
+        let item = create_test_item();
+        let context = DisplayContext {
+            text: &item.match_text,
+            score: 0,
+            matches: Matches::CharIndices(&[0, 1]),
+            container_width: 80,
+            highlight_attr: Default::default(),
+        };
+
+        assert!(item.display(context).has_attrs());
     }
 
     #[test]
     fn test_pokemon_item_preview() {
-        let item = PokemonItem {
-            japanese: "ピカチュウ".to_string(),
-            english: "Pikachu".to_string(),
-            display: "ピカチュウ → Pikachu".to_string(),
-        };
+        let item = create_test_item();
 
         let preview_context = PreviewContext {
             query: "",
@@ -255,8 +345,8 @@ mod tests {
 
         let preview = item.preview(preview_context);
         if let ItemPreview::Text(text) = preview {
-            assert!(text.contains("日本語: ピカチュウ"));
-            assert!(text.contains("英語: Pikachu"));
+            assert!(text.contains("日本語: フシギダネ"));
+            assert!(text.contains("英語: Bulbasaur"));
         } else {
             panic!("Expected text preview");
         }

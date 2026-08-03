@@ -230,7 +230,6 @@ fn to_romaji(katakana: &str, style: Style) -> String {
 }
 
 /// カタカナ名から、マッチ用のローマ字表記を返す（ヘボン式・訓令式、重複除去済み）
-#[allow(dead_code)] // Task 4 で interactive.rs から使用する
 pub fn variants(katakana: &str) -> Vec<String> {
     let hepburn = to_romaji(katakana, Style::Hepburn);
     let kunrei = to_romaji(katakana, Style::Kunrei);
