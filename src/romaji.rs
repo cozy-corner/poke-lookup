@@ -170,26 +170,60 @@ fn lookup(kana: &str, style: Style) -> Option<&'static str> {
         })
 }
 
+fn is_vowel(c: char) -> bool {
+    matches!(c, 'a' | 'i' | 'u' | 'e' | 'o')
+}
+
 fn to_romaji(katakana: &str, style: Style) -> String {
     let chars: Vec<char> = katakana.chars().collect();
     let mut out = String::new();
     let mut i = 0;
+    // 直前に ッ があったか。子音を重ねる対象は次の音なので持ち越す
+    let mut sokuon = false;
 
     while i < chars.len() {
-        // 拗音・外来音は 2 文字で 1 音なので、単カナより先に引く
-        let pair: Option<String> = (i + 1 < chars.len()).then(|| chars[i..i + 2].iter().collect());
-        if let Some(r) = pair.as_deref().and_then(|p| lookup(p, style)) {
-            out.push_str(r);
-            i += 2;
+        let c = chars[i];
+
+        if c == 'ッ' {
+            sokuon = true;
+            i += 1;
             continue;
         }
 
-        match lookup(&chars[i].to_string(), style) {
-            Some(r) => out.push_str(r),
-            // 変換表にない文字は落とさずそのまま通す
-            None => out.push(chars[i]),
+        if c == 'ー' {
+            if let Some(v) = out.chars().last().filter(|v| is_vowel(*v)) {
+                out.push(v);
+            }
+            i += 1;
+            continue;
         }
-        i += 1;
+
+        // 拗音・外来音は 2 文字で 1 音なので、単カナより先に引く
+        let pair: Option<String> = (i + 1 < chars.len()).then(|| chars[i..i + 2].iter().collect());
+        let (romaji, consumed) = match pair.as_deref().and_then(|p| lookup(p, style)) {
+            Some(r) => (r, 2),
+            None => match lookup(&c.to_string(), style) {
+                Some(r) => (r, 1),
+                // 変換表にない文字は落とさずそのまま通す
+                None => {
+                    out.push(c);
+                    sokuon = false;
+                    i += 1;
+                    continue;
+                }
+            },
+        };
+
+        if sokuon {
+            sokuon = false;
+            // 母音始まりの音には重ねる子音がない
+            if let Some(first) = romaji.chars().next().filter(|f| !is_vowel(*f)) {
+                out.push(first);
+            }
+        }
+
+        out.push_str(romaji);
+        i += consumed;
     }
 
     out
@@ -261,5 +295,25 @@ mod tests {
     fn test_youon_in_name() {
         assert_eq!(variants("ピカチュウ"), vec!["pikachuu", "pikatyuu"]);
         assert_eq!(variants("ウィンディ"), vec!["windi"]);
+    }
+
+    #[test]
+    fn test_sokuon() {
+        // ッ は次の音の子音を重ねる
+        assert_eq!(variants("バッフロン"), vec!["baffuron", "bahhuron"]);
+        assert_eq!(variants("ジェット"), vec!["jetto", "zyetto"]);
+    }
+
+    #[test]
+    fn test_chouon() {
+        // ー は直前の母音を重ねる
+        assert_eq!(variants("ブースター"), vec!["buusutaa"]);
+        assert_eq!(variants("サンダー"), vec!["sandaa"]);
+    }
+
+    #[test]
+    fn test_chouon_at_head_is_ignored() {
+        // 直前に母音がない ー は伸ばす対象がないので無視する
+        assert_eq!(variants("ーカ"), vec!["ka"]);
     }
 }
