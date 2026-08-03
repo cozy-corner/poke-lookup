@@ -101,6 +101,11 @@ impl InteractiveSelector {
         // skimオプションを設定
         let options = SkimOptionsBuilder::default()
             .height(Some("40%"))
+            // tuikit の終了処理は実行時の状態ではなくこのオプションで分岐する。
+            // false のままだと、インラインモードで代替画面に入っていないのに
+            // quit_alternate_screen だけを出すため、描画が消えずカーソルも戻らず、
+            // 直後のスプライトが選択UIに重なる（issue #12）。
+            .no_clear_start(true)
             .multi(false)
             .preview(Some(""))
             .preview_window(Some("down:3:wrap"))
