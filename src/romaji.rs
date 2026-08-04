@@ -1,0 +1,328 @@
+//! カタカナ名を、skim のマッチ用ローマ字表記に変換する。
+//!
+//! skim のマッチはファジー（部分列）マッチなので、長音を省いた入力
+//! （buusutaa に対する busuta）は生成しなくてもヒットする。一方
+//! husigi は fushigi の部分列にならないため、ヘボン式と訓令式の
+//! 両方を生成する。
+
+/// ローマ字の表記方式
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Style {
+    Hepburn,
+    Kunrei,
+}
+
+/// (カタカナ, ヘボン式, 訓令式)
+const SYLLABLES: &[(&str, &str, &str)] = &[
+    // 拗音（2 文字で 1 音）
+    ("キャ", "kya", "kya"),
+    ("キュ", "kyu", "kyu"),
+    ("キョ", "kyo", "kyo"),
+    ("シャ", "sha", "sya"),
+    ("シュ", "shu", "syu"),
+    ("ショ", "sho", "syo"),
+    ("チャ", "cha", "tya"),
+    ("チュ", "chu", "tyu"),
+    ("チョ", "cho", "tyo"),
+    ("ニャ", "nya", "nya"),
+    ("ニュ", "nyu", "nyu"),
+    ("ニョ", "nyo", "nyo"),
+    ("ヒャ", "hya", "hya"),
+    ("ヒュ", "hyu", "hyu"),
+    ("ヒョ", "hyo", "hyo"),
+    ("ミャ", "mya", "mya"),
+    ("ミュ", "myu", "myu"),
+    ("ミョ", "myo", "myo"),
+    ("リャ", "rya", "rya"),
+    ("リュ", "ryu", "ryu"),
+    ("リョ", "ryo", "ryo"),
+    ("ギャ", "gya", "gya"),
+    ("ギュ", "gyu", "gyu"),
+    ("ギョ", "gyo", "gyo"),
+    ("ジャ", "ja", "zya"),
+    ("ジュ", "ju", "zyu"),
+    ("ジョ", "jo", "zyo"),
+    ("ヂャ", "ja", "zya"),
+    ("ヂュ", "ju", "zyu"),
+    ("ヂョ", "jo", "zyo"),
+    ("ビャ", "bya", "bya"),
+    ("ビュ", "byu", "byu"),
+    ("ビョ", "byo", "byo"),
+    ("ピャ", "pya", "pya"),
+    ("ピュ", "pyu", "pyu"),
+    ("ピョ", "pyo", "pyo"),
+    // 外来音（ファイヤー・ウィンディなど実データに存在する）
+    ("ファ", "fa", "fa"),
+    ("フィ", "fi", "fi"),
+    ("フェ", "fe", "fe"),
+    ("フォ", "fo", "fo"),
+    ("フュ", "fyu", "fyu"),
+    ("ウィ", "wi", "wi"),
+    ("ウェ", "we", "we"),
+    ("ウォ", "wo", "wo"),
+    ("ヴァ", "va", "va"),
+    ("ヴィ", "vi", "vi"),
+    ("ヴェ", "ve", "ve"),
+    ("ヴォ", "vo", "vo"),
+    ("ティ", "ti", "ti"),
+    ("ディ", "di", "di"),
+    ("トゥ", "tu", "tu"),
+    ("ドゥ", "du", "du"),
+    ("シェ", "she", "sye"),
+    ("ジェ", "je", "zye"),
+    ("チェ", "che", "tye"),
+    ("ツァ", "tsa", "tsa"),
+    ("ツィ", "tsi", "tsi"),
+    ("ツェ", "tse", "tse"),
+    ("ツォ", "tso", "tso"),
+    ("クァ", "kwa", "kwa"),
+    ("グァ", "gwa", "gwa"),
+    ("ア", "a", "a"),
+    ("イ", "i", "i"),
+    ("ウ", "u", "u"),
+    ("エ", "e", "e"),
+    ("オ", "o", "o"),
+    ("カ", "ka", "ka"),
+    ("キ", "ki", "ki"),
+    ("ク", "ku", "ku"),
+    ("ケ", "ke", "ke"),
+    ("コ", "ko", "ko"),
+    ("サ", "sa", "sa"),
+    ("シ", "shi", "si"),
+    ("ス", "su", "su"),
+    ("セ", "se", "se"),
+    ("ソ", "so", "so"),
+    ("タ", "ta", "ta"),
+    ("チ", "chi", "ti"),
+    ("ツ", "tsu", "tu"),
+    ("テ", "te", "te"),
+    ("ト", "to", "to"),
+    ("ナ", "na", "na"),
+    ("ニ", "ni", "ni"),
+    ("ヌ", "nu", "nu"),
+    ("ネ", "ne", "ne"),
+    ("ノ", "no", "no"),
+    ("ハ", "ha", "ha"),
+    ("ヒ", "hi", "hi"),
+    ("フ", "fu", "hu"),
+    ("ヘ", "he", "he"),
+    ("ホ", "ho", "ho"),
+    ("マ", "ma", "ma"),
+    ("ミ", "mi", "mi"),
+    ("ム", "mu", "mu"),
+    ("メ", "me", "me"),
+    ("モ", "mo", "mo"),
+    ("ヤ", "ya", "ya"),
+    ("ユ", "yu", "yu"),
+    ("ヨ", "yo", "yo"),
+    ("ラ", "ra", "ra"),
+    ("リ", "ri", "ri"),
+    ("ル", "ru", "ru"),
+    ("レ", "re", "re"),
+    ("ロ", "ro", "ro"),
+    ("ワ", "wa", "wa"),
+    ("ヲ", "o", "o"),
+    ("ン", "n", "n"),
+    ("ガ", "ga", "ga"),
+    ("ギ", "gi", "gi"),
+    ("グ", "gu", "gu"),
+    ("ゲ", "ge", "ge"),
+    ("ゴ", "go", "go"),
+    ("ザ", "za", "za"),
+    ("ジ", "ji", "zi"),
+    ("ズ", "zu", "zu"),
+    ("ゼ", "ze", "ze"),
+    ("ゾ", "zo", "zo"),
+    ("ダ", "da", "da"),
+    ("ヂ", "ji", "zi"),
+    ("ヅ", "zu", "zu"),
+    ("デ", "de", "de"),
+    ("ド", "do", "do"),
+    ("バ", "ba", "ba"),
+    ("ビ", "bi", "bi"),
+    ("ブ", "bu", "bu"),
+    ("ベ", "be", "be"),
+    ("ボ", "bo", "bo"),
+    ("パ", "pa", "pa"),
+    ("ピ", "pi", "pi"),
+    ("プ", "pu", "pu"),
+    ("ペ", "pe", "pe"),
+    ("ポ", "po", "po"),
+    ("ヴ", "vu", "vu"),
+    // 拗音の一部として現れなかった小書きカナ
+    ("ァ", "a", "a"),
+    ("ィ", "i", "i"),
+    ("ゥ", "u", "u"),
+    ("ェ", "e", "e"),
+    ("ォ", "o", "o"),
+    ("ャ", "ya", "ya"),
+    ("ュ", "yu", "yu"),
+    ("ョ", "yo", "yo"),
+];
+
+fn lookup(kana: &str, style: Style) -> Option<&'static str> {
+    SYLLABLES
+        .iter()
+        .find(|(k, _, _)| *k == kana)
+        .map(|(_, hepburn, kunrei)| match style {
+            Style::Hepburn => *hepburn,
+            Style::Kunrei => *kunrei,
+        })
+}
+
+fn is_vowel(c: char) -> bool {
+    matches!(c, 'a' | 'i' | 'u' | 'e' | 'o')
+}
+
+fn to_romaji(katakana: &str, style: Style) -> String {
+    let chars: Vec<char> = katakana.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    // 直前に ッ があったか。子音を重ねる対象は次の音なので持ち越す
+    let mut sokuon = false;
+
+    while i < chars.len() {
+        let c = chars[i];
+
+        if c == 'ッ' {
+            sokuon = true;
+            i += 1;
+            continue;
+        }
+
+        if c == 'ー' {
+            if let Some(v) = out.chars().last().filter(|v| is_vowel(*v)) {
+                out.push(v);
+            }
+            i += 1;
+            continue;
+        }
+
+        // 拗音・外来音は 2 文字で 1 音なので、単カナより先に引く
+        let pair: Option<String> = (i + 1 < chars.len()).then(|| chars[i..i + 2].iter().collect());
+        let (romaji, consumed) = match pair.as_deref().and_then(|p| lookup(p, style)) {
+            Some(r) => (r, 2),
+            None => match lookup(&c.to_string(), style) {
+                Some(r) => (r, 1),
+                // 変換表にない文字は落とさずそのまま通す
+                None => {
+                    out.push(c);
+                    sokuon = false;
+                    i += 1;
+                    continue;
+                }
+            },
+        };
+
+        if sokuon {
+            sokuon = false;
+            if romaji.starts_with("ch") {
+                // ヘボン式の ッチ は cchi ではなく tchi と綴る
+                out.push('t');
+            } else if let Some(first) = romaji.chars().next().filter(|f| !is_vowel(*f)) {
+                // 母音始まりの音には重ねる子音がない
+                out.push(first);
+            }
+        }
+
+        out.push_str(romaji);
+        i += consumed;
+    }
+
+    out
+}
+
+/// カタカナ名から、マッチ用のローマ字表記を返す（ヘボン式・訓令式、重複除去済み）
+pub fn variants(katakana: &str) -> Vec<String> {
+    let hepburn = to_romaji(katakana, Style::Hepburn);
+    let kunrei = to_romaji(katakana, Style::Kunrei);
+
+    if hepburn == kunrei {
+        vec![hepburn]
+    } else {
+        vec![hepburn, kunrei]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_single_kana() {
+        assert_eq!(variants("ヒトカゲ"), vec!["hitokage"]);
+        assert_eq!(variants("ピカ"), vec!["pika"]);
+        assert_eq!(variants("ン"), vec!["n"]);
+    }
+
+    #[test]
+    fn test_hepburn_and_kunrei_differ() {
+        assert_eq!(variants("フシギ"), vec!["fushigi", "husigi"]);
+        assert_eq!(variants("ツ"), vec!["tsu", "tu"]);
+        assert_eq!(variants("チ"), vec!["chi", "ti"]);
+        assert_eq!(variants("ジ"), vec!["ji", "zi"]);
+    }
+
+    #[test]
+    fn test_identical_styles_are_deduped() {
+        // 両式で差が出ない名前は 1 件だけ返る
+        assert_eq!(variants("カメ").len(), 1);
+    }
+
+    #[test]
+    fn test_unknown_char_passes_through() {
+        // 変換表にない文字は落とさずそのまま通す
+        assert_eq!(variants("ポリゴン2"), vec!["porigon2"]);
+    }
+
+    #[test]
+    fn test_youon() {
+        assert_eq!(variants("キャ"), vec!["kya"]);
+        assert_eq!(variants("シュ"), vec!["shu", "syu"]);
+        assert_eq!(variants("チョ"), vec!["cho", "tyo"]);
+        assert_eq!(variants("ジャ"), vec!["ja", "zya"]);
+        assert_eq!(variants("リュ"), vec!["ryu"]);
+    }
+
+    #[test]
+    fn test_foreign_sounds() {
+        assert_eq!(variants("ファ"), vec!["fa"]);
+        assert_eq!(variants("ウィ"), vec!["wi"]);
+        assert_eq!(variants("ディ"), vec!["di"]);
+        assert_eq!(variants("ジェ"), vec!["je", "zye"]);
+        assert_eq!(variants("チェ"), vec!["che", "tye"]);
+    }
+
+    #[test]
+    fn test_youon_in_name() {
+        assert_eq!(variants("ピカチュウ"), vec!["pikachuu", "pikatyuu"]);
+        assert_eq!(variants("ウィンディ"), vec!["windi"]);
+    }
+
+    #[test]
+    fn test_sokuon() {
+        // ッ は次の音の子音を重ねる
+        assert_eq!(variants("バッフロン"), vec!["baffuron", "bahhuron"]);
+        assert_eq!(variants("ジェット"), vec!["jetto", "zyetto"]);
+    }
+
+    #[test]
+    fn test_sokuon_before_chi() {
+        // ヘボン式の ッチ は cchi ではなく tchi。訓令式は tti のまま
+        assert_eq!(variants("ノコッチ"), vec!["nokotchi", "nokotti"]);
+        assert_eq!(variants("ポッチャマ"), vec!["potchama", "pottyama"]);
+    }
+
+    #[test]
+    fn test_chouon() {
+        // ー は直前の母音を重ねる
+        assert_eq!(variants("ブースター"), vec!["buusutaa"]);
+        assert_eq!(variants("サンダー"), vec!["sandaa"]);
+    }
+
+    #[test]
+    fn test_chouon_at_head_is_ignored() {
+        // 直前に母音がない ー は伸ばす対象がないので無視する
+        assert_eq!(variants("ーカ"), vec!["ka"]);
+    }
+}

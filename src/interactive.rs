@@ -17,16 +17,70 @@ use std::sync::Arc;
 struct PokemonItem {
     japanese: String,
     english: String,
+    /// 一覧に表示する文字列
     display: String,
+    /// skim のマッチ対象。display にローマ字を足したもので、ローマ字は表示されない
+    match_text: String,
 }
 
 impl SkimItem for PokemonItem {
     fn text(&self) -> std::borrow::Cow<'_, str> {
-        self.display.as_str().into()
+        self.match_text.as_str().into()
+    }
+
+    fn display<'a>(&'a self, context: DisplayContext<'a>) -> AnsiString<'a> {
+        // ハイライト位置は match_text 上の位置なので、可視部からはみ出した分を捨てる
+        let visible = self.display.chars().count() as u32;
+        let fragments = match context.matches {
+            Matches::CharIndices(indices) => indices
+                .iter()
+                .map(|&i| i as u32)
+                .filter(|&i| i < visible)
+                .map(|i| (context.highlight_attr, (i, i + 1)))
+                .collect(),
+            Matches::CharRange(start, end) => {
+                let (start, end) = (start as u32, (end as u32).min(visible));
+                if start < end {
+                    vec![(context.highlight_attr, (start, end))]
+                } else {
+                    vec![]
+                }
+            }
+            Matches::ByteRange(start, end) => {
+                let start = context.text[..start].chars().count() as u32;
+                let end = (context.text[..end].chars().count() as u32).min(visible);
+                if start < end {
+                    vec![(context.highlight_attr, (start, end))]
+                } else {
+                    vec![]
+                }
+            }
+            Matches::None => vec![],
+        };
+
+        AnsiString::new_str(&self.display, fragments)
+    }
+
+    fn output(&self) -> std::borrow::Cow<'_, str> {
+        self.english.as_str().into()
     }
 
     fn preview(&self, _context: PreviewContext) -> ItemPreview {
         ItemPreview::Text(format!("日本語: {}\n英語: {}", self.japanese, self.english))
+    }
+}
+
+impl PokemonItem {
+    fn new(ja: &str, en: &str) -> Self {
+        let display = format!("{} → {}", ja, en);
+        let romaji = crate::romaji::variants(ja).join(" ");
+        let match_text = format!("{} {}", display, romaji);
+        Self {
+            japanese: ja.to_string(),
+            english: en.to_string(),
+            match_text,
+            display,
+        }
     }
 }
 
@@ -89,13 +143,7 @@ impl InteractiveSelector {
         // skim用のアイテムを作成
         let items: Vec<Arc<dyn SkimItem>> = candidates
             .iter()
-            .map(|(ja, en)| {
-                Arc::new(PokemonItem {
-                    japanese: ja.to_string(),
-                    english: en.to_string(),
-                    display: format!("{} → {}", ja, en),
-                }) as Arc<dyn SkimItem>
-            })
+            .map(|(ja, en)| Arc::new(PokemonItem::new(ja, en)) as Arc<dyn SkimItem>)
             .collect();
 
         // skimオプションを設定
@@ -133,33 +181,25 @@ impl InteractiveSelector {
         }
 
         if let Some(item) = selected_items.selected_items.first() {
-            // 選択されたアイテムから英名を抽出
-            let text = item.text();
-            if text.contains(" → ") {
-                // UTF-8文字境界を考慮して分割
-                let parts: Vec<&str> = text.split(" → ").collect();
-                if parts.len() == 2 {
-                    let english_name = parts[1].trim().to_string();
+            let english_name = item.output().to_string();
 
-                    // スプライト表示とナビゲーション処理
-                    #[cfg(feature = "sprites")]
-                    if let Some(ref sprite_service) = self.sprite_service {
-                        if let Some(final_selection) = self.show_sprite_with_navigation(
-                            &english_name,
-                            sprite_service,
-                            candidates,
-                            initial_query,
-                        )? {
-                            return Ok(Some(final_selection));
-                        } else {
-                            // ESCが押されたら再選択のためにループに戻る
-                            return self.run_skim_selection(candidates, initial_query);
-                        }
-                    }
-
-                    return Ok(Some(english_name));
+            // スプライト表示とナビゲーション処理
+            #[cfg(feature = "sprites")]
+            if let Some(ref sprite_service) = self.sprite_service {
+                if let Some(final_selection) = self.show_sprite_with_navigation(
+                    &english_name,
+                    sprite_service,
+                    candidates,
+                    initial_query,
+                )? {
+                    return Ok(Some(final_selection));
+                } else {
+                    // ESCが押されたら再選択のためにループに戻る
+                    return self.run_skim_selection(candidates, initial_query);
                 }
             }
+
+            return Ok(Some(english_name));
         }
 
         Ok(None)
@@ -223,24 +263,104 @@ mod tests {
         InteractiveSelector::new(search_service)
     }
 
+    fn create_test_item() -> PokemonItem {
+        PokemonItem::new("フシギダネ", "Bulbasaur")
+    }
+
     #[test]
-    fn test_pokemon_item_text() {
-        let item = PokemonItem {
-            japanese: "ピカチュウ".to_string(),
-            english: "Pikachu".to_string(),
-            display: "ピカチュウ → Pikachu".to_string(),
+    fn test_text_contains_romaji() {
+        let item = create_test_item();
+        let text = item.text();
+        assert!(text.contains("フシギダネ"));
+        assert!(text.contains("Bulbasaur"));
+        assert!(text.contains("fushigidane"));
+        assert!(text.contains("husigidane"));
+    }
+
+    #[test]
+    fn test_display_hides_romaji() {
+        let item = create_test_item();
+        let context = DisplayContext {
+            text: &item.match_text,
+            score: 0,
+            matches: Matches::None,
+            container_width: 80,
+            highlight_attr: Default::default(),
         };
 
-        assert_eq!(item.text(), "ピカチュウ → Pikachu");
+        assert_eq!(item.display(context).stripped(), "フシギダネ → Bulbasaur");
+    }
+
+    #[test]
+    fn test_display_drops_highlight_outside_visible_part() {
+        let item = create_test_item();
+        // 隠しローマ字の位置だけにマッチした場合、可視部にハイライトは付かない。
+        // AnsiString::new_str はフラグメントが1個かつ属性がデフォルトだと
+        // 「属性なし」に潰すため、index は2個以上渡さないと has_attrs() が
+        // クリップ処理をしなくても false のままになり、テストが空回りする。
+        let hidden = item.display.chars().count() + 2;
+        let context = DisplayContext {
+            text: &item.match_text,
+            score: 0,
+            matches: Matches::CharIndices(&[hidden, hidden + 1]),
+            container_width: 80,
+            highlight_attr: Default::default(),
+        };
+
+        let rendered = item.display(context);
+        assert_eq!(rendered.stripped(), "フシギダネ → Bulbasaur");
+        assert!(!rendered.has_attrs());
+    }
+
+    #[test]
+    fn test_display_keeps_highlight_inside_visible_part() {
+        let item = create_test_item();
+        let context = DisplayContext {
+            text: &item.match_text,
+            score: 0,
+            matches: Matches::CharIndices(&[0, 1]),
+            container_width: 80,
+            highlight_attr: Default::default(),
+        };
+
+        assert!(item.display(context).has_attrs());
+    }
+
+    #[test]
+    fn test_display_highlight_clip_boundary() {
+        let item = create_test_item();
+        let visible = item.display.chars().count();
+
+        // 境界の1つ内側（visible - 1）は可視部として残る
+        let context = DisplayContext {
+            text: &item.match_text,
+            score: 0,
+            matches: Matches::CharIndices(&[visible - 1, visible - 2]),
+            container_width: 80,
+            highlight_attr: Default::default(),
+        };
+        assert!(item.display(context).has_attrs());
+
+        // 境界ちょうど（visible）は隠しローマ字部として落ちる
+        let context = DisplayContext {
+            text: &item.match_text,
+            score: 0,
+            matches: Matches::CharIndices(&[visible, visible + 1]),
+            container_width: 80,
+            highlight_attr: Default::default(),
+        };
+        assert!(!item.display(context).has_attrs());
+    }
+
+    #[test]
+    fn test_output_returns_english_name() {
+        // 確定時の返り値は表示文字列ではなく英名そのもの
+        assert_eq!(create_test_item().output(), "Bulbasaur");
     }
 
     #[test]
     fn test_pokemon_item_preview() {
-        let item = PokemonItem {
-            japanese: "ピカチュウ".to_string(),
-            english: "Pikachu".to_string(),
-            display: "ピカチュウ → Pikachu".to_string(),
-        };
+        let item = create_test_item();
 
         let preview_context = PreviewContext {
             query: "",
@@ -255,8 +375,8 @@ mod tests {
 
         let preview = item.preview(preview_context);
         if let ItemPreview::Text(text) = preview {
-            assert!(text.contains("日本語: ピカチュウ"));
-            assert!(text.contains("英語: Pikachu"));
+            assert!(text.contains("日本語: フシギダネ"));
+            assert!(text.contains("英語: Bulbasaur"));
         } else {
             panic!("Expected text preview");
         }
