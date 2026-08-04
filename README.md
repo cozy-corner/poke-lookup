@@ -189,7 +189,7 @@ cargo uninstall poke-lookup
 ## データ更新について
 
 - GitHub Actions により毎月1日に自動更新
-- PokéAPI から全ポケモン種（1025+）のデータを取得
+- PokéAPI から全ポケモン種（1025+）と、そのフォルム（アローラのすがた・メガシンカなど）のデータを取得
 - GitHub Releases で配布（SHA256 チェックサム付き）
 
 ## トラブルシューティング
