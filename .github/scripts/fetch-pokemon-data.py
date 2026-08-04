@@ -110,18 +110,19 @@ def fetch_form_entry(base_ja: str, pokemon_url: str) -> Optional[Dict[str, str]]
         'species_slug': pokemon_data['species']['name'],
     }
 
-def dedupe_en(form_entries: List[Dict[str, str]]) -> None:
+def dedupe_en(entries: List[Dict[str, str]]) -> None:
     """英名が衝突するフォルムをスラッグ由来の名前に置き換える
 
     英名は検索結果の出力値であり、スプライト取得のキーでもあるため一意である必要がある。
     メガイエッサン♂/♀ のように PokéAPI 側で同じ英名を持つフォルムが存在する。
+    種のエントリは書き換えず、フォルム側だけを変える。
     """
     duplicates = {
-        en for en, count in Counter(e['en'] for e in form_entries).items() if count > 1
+        en for en, count in Counter(e['en'] for e in entries).items() if count > 1
     }
 
-    for entry in form_entries:
-        if entry['en'] in duplicates:
+    for entry in entries:
+        if entry['en'] in duplicates and 'slug' in entry:
             entry['en'] = slug_to_en(entry['slug'])
 
 def form_tokens(entry: Dict[str, str]) -> List[str]:
@@ -136,20 +137,23 @@ def disambiguate_ja(entries: List[Dict[str, str]]) -> None:
     フォルムが日本語では同名になることがある。検索キーは日本語名なので
     （search.rs の HashMap）、同名のままでは選び分けられない。
     識別子はグループ内で差分になるトークンだけを使う（Orange / Combat など）。
+    種のエントリは書き換えず、フォルム側だけを変える。
     """
     groups = defaultdict(list)
     for entry in entries:
-        if 'slug' in entry:
-            groups[entry['ja']].append(entry)
+        groups[entry['ja']].append(entry)
 
     for group in groups.values():
         if len(group) < 2:
             continue
 
-        token_lists = [form_tokens(e) for e in group]
+        forms = [e for e in group if 'slug' in e]
+        token_lists = [form_tokens(e) for e in forms]
+        if not token_lists:
+            continue
         shared = set.intersection(*(set(t) for t in token_lists))
 
-        for entry, tokens in zip(group, token_lists):
+        for entry, tokens in zip(forms, token_lists):
             distinct = [t for t in tokens if t not in shared] or tokens
             label = ' '.join(t.capitalize() for t in distinct)
             # 「ロコン（アローラのすがた）」のように既に括弧付きなら中に足す
@@ -224,9 +228,9 @@ def main():
 
     print(f'Forms with names: {len(form_entries)} (skipped {skipped} without a Japanese name)', file=sys.stderr)
 
-    dedupe_en(form_entries)
     entries.extend(form_entries)
 
+    dedupe_en(entries)
     disambiguate_ja(entries)
     for entry in form_entries:
         del entry['slug']
