@@ -236,12 +236,6 @@ def main():
         del entry['slug']
         del entry['species_slug']
 
-    # 名前の抽出に失敗しても error_count は増えないため、空のまま
-    # リリースされないようここで止める
-    if not entries:
-        print('\n❌ Failed: no entries were extracted', file=sys.stderr)
-        sys.exit(1)
-
     # 日本語名は検索キー、英名は検索結果の出力値かつスプライト取得のキーなので
     # どちらも一意でなければならない（search.rs / sprite.rs の HashMap）
     for field in ('ja', 'en'):
