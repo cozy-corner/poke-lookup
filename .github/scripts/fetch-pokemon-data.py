@@ -11,13 +11,18 @@ from datetime import datetime, timezone
 from typing import List, Dict, Optional
 import urllib.request
 
+# 既定の python-urllib UA は PokéAPI に 403 で弾かれる
+USER_AGENT = 'poke-lookup-data-fetcher'
+
 def fetch_json(url: str, max_retries: int = 3) -> dict:
     """URLからJSONデータを取得（リトライ機能付き）"""
     last_error = None
 
+    request = urllib.request.Request(url, headers={'User-Agent': USER_AGENT})
+
     for attempt in range(max_retries):
         try:
-            with urllib.request.urlopen(url) as response:
+            with urllib.request.urlopen(request) as response:
                 return json.loads(response.read())
         except Exception as e:
             last_error = e
@@ -38,8 +43,9 @@ def get_name_pair(species_data: dict) -> Optional[Dict[str, str]]:
     en_name = None
 
     for name_entry in names:
-        lang = name_entry.get('language', {}).get('name')
-        if lang == 'ja-Hrkt':
+        # PokéAPI は言語コードの大文字小文字を変えることがある（ja-Hrkt → ja-hrkt）
+        lang = name_entry.get('language', {}).get('name', '').lower()
+        if lang == 'ja-hrkt':
             ja_name = name_entry.get('name')
         elif lang == 'en':
             en_name = name_entry.get('name')
@@ -90,6 +96,12 @@ def main():
             print(f'Error: Failed to process {species_ref["name"]}: {e}', file=sys.stderr)
             error_count += 1
             continue
+
+    # 名前の抽出に失敗しても error_count は増えないため、空のまま
+    # リリースされないようここで止める
+    if not entries:
+        print('\n❌ Failed: no entries were extracted', file=sys.stderr)
+        sys.exit(1)
 
     # エントリをソート
     entries.sort(key=lambda x: x['ja'])
