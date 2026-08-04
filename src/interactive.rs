@@ -70,6 +70,20 @@ impl SkimItem for PokemonItem {
     }
 }
 
+impl PokemonItem {
+    fn new(ja: &str, en: &str) -> Self {
+        let display = format!("{} → {}", ja, en);
+        let romaji = crate::romaji::variants(ja).join(" ");
+        let match_text = format!("{} {}", display, romaji);
+        Self {
+            japanese: ja.to_string(),
+            english: en.to_string(),
+            match_text,
+            display,
+        }
+    }
+}
+
 /// インタラクティブ選択機能
 pub struct InteractiveSelector {
     search_service: SearchService,
@@ -129,16 +143,7 @@ impl InteractiveSelector {
         // skim用のアイテムを作成
         let items: Vec<Arc<dyn SkimItem>> = candidates
             .iter()
-            .map(|(ja, en)| {
-                let display = format!("{} → {}", ja, en);
-                let romaji = crate::romaji::variants(ja).join(" ");
-                Arc::new(PokemonItem {
-                    japanese: ja.to_string(),
-                    english: en.to_string(),
-                    match_text: format!("{} {}", display, romaji),
-                    display,
-                }) as Arc<dyn SkimItem>
-            })
+            .map(|(ja, en)| Arc::new(PokemonItem::new(ja, en)) as Arc<dyn SkimItem>)
             .collect();
 
         // skimオプションを設定
@@ -259,13 +264,7 @@ mod tests {
     }
 
     fn create_test_item() -> PokemonItem {
-        let display = "フシギダネ → Bulbasaur".to_string();
-        PokemonItem {
-            japanese: "フシギダネ".to_string(),
-            english: "Bulbasaur".to_string(),
-            match_text: format!("{} fushigidane husigidane", display),
-            display,
-        }
+        PokemonItem::new("フシギダネ", "Bulbasaur")
     }
 
     #[test]
