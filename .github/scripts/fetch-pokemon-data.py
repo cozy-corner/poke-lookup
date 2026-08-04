@@ -280,7 +280,8 @@ def main():
         print(f'\n❌ Failed: {error_count} errors occurred during processing', file=sys.stderr)
         sys.exit(1)
 
-    print(f'\n✅ All {total} species and {len(variety_refs)} forms processed successfully', file=sys.stderr)
+    print(f'\n✅ All {total} species and {len(variety_refs)} forms processed successfully '
+          f'({len(entries)} entries)', file=sys.stderr)
 
 if __name__ == '__main__':
     main()
