@@ -295,12 +295,15 @@ mod tests {
     #[test]
     fn test_display_drops_highlight_outside_visible_part() {
         let item = create_test_item();
-        // 隠しローマ字の位置だけにマッチした場合、可視部にハイライトは付かない
+        // 隠しローマ字の位置だけにマッチした場合、可視部にハイライトは付かない。
+        // AnsiString::new_str はフラグメントが1個かつ属性がデフォルトだと
+        // 「属性なし」に潰すため、index は2個以上渡さないと has_attrs() が
+        // クリップ処理をしなくても false のままになり、テストが空回りする。
         let hidden = item.display.chars().count() + 2;
         let context = DisplayContext {
             text: &item.match_text,
             score: 0,
-            matches: Matches::CharIndices(&[hidden]),
+            matches: Matches::CharIndices(&[hidden, hidden + 1]),
             container_width: 80,
             highlight_attr: Default::default(),
         };
