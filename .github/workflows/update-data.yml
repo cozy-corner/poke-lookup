@@ -10,7 +10,7 @@ on:
 jobs:
   update-data:
     runs-on: ubuntu-latest
-    timeout-minutes: 10  # タイムアウトを10分に設定（API呼び出しのため）
+    timeout-minutes: 20  # タイムアウトを20分に設定（species に加えフォルムも取得するため）
     permissions:
       contents: write
 
