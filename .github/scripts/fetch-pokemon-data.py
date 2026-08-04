@@ -93,7 +93,10 @@ def fetch_form_entry(base_ja: str, pokemon_url: str) -> Optional[Dict[str, str]]
     pokemon_data = fetch_json(pokemon_url)
     form_data = fetch_json(pokemon_data['forms'][0]['url'])
 
-    form_ja = find_localized_name(form_data.get('form_names', []), 'ja-hrkt')
+    # イワンコ（マイペース）のように form_names ではなく names 側にだけ
+    # 日本語名を持つフォルムがある
+    form_ja = find_localized_name(form_data.get('form_names', []), 'ja-hrkt') or \
+        find_localized_name(form_data.get('names', []), 'ja-hrkt')
     if not form_ja:
         return None
 
