@@ -216,8 +216,11 @@ fn to_romaji(katakana: &str, style: Style) -> String {
 
         if sokuon {
             sokuon = false;
-            // 母音始まりの音には重ねる子音がない
-            if let Some(first) = romaji.chars().next().filter(|f| !is_vowel(*f)) {
+            if romaji.starts_with("ch") {
+                // ヘボン式の ッチ は cchi ではなく tchi と綴る
+                out.push('t');
+            } else if let Some(first) = romaji.chars().next().filter(|f| !is_vowel(*f)) {
+                // 母音始まりの音には重ねる子音がない
                 out.push(first);
             }
         }
@@ -301,6 +304,13 @@ mod tests {
         // ッ は次の音の子音を重ねる
         assert_eq!(variants("バッフロン"), vec!["baffuron", "bahhuron"]);
         assert_eq!(variants("ジェット"), vec!["jetto", "zyetto"]);
+    }
+
+    #[test]
+    fn test_sokuon_before_chi() {
+        // ヘボン式の ッチ は cchi ではなく tchi。訓令式は tti のまま
+        assert_eq!(variants("ノコッチ"), vec!["nokotchi", "nokotti"]);
+        assert_eq!(variants("ポッチャマ"), vec!["potchama", "pottyama"]);
     }
 
     #[test]
