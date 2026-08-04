@@ -7,17 +7,27 @@ import json
 import sys
 import time
 import hashlib
+from collections import Counter, defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 import urllib.request
+
+# 既定の python-urllib UA は PokéAPI に 403 で弾かれる
+USER_AGENT = 'poke-lookup-data-fetcher'
+
+# フォルム取得は species の 3 倍近いリクエストになるため並列化する
+FORM_WORKERS = 8
 
 def fetch_json(url: str, max_retries: int = 3) -> dict:
     """URLからJSONデータを取得（リトライ機能付き）"""
     last_error = None
 
+    request = urllib.request.Request(url, headers={'User-Agent': USER_AGENT})
+
     for attempt in range(max_retries):
         try:
-            with urllib.request.urlopen(url) as response:
+            with urllib.request.urlopen(request) as response:
                 return json.loads(response.read())
         except Exception as e:
             last_error = e
@@ -29,24 +39,128 @@ def fetch_json(url: str, max_retries: int = 3) -> dict:
     # 全てのリトライが失敗した場合
     raise last_error
 
+def find_localized_name(names: List[dict], lang: str) -> Optional[str]:
+    """名前リストから指定言語の名前を取り出す
+
+    PokéAPI は言語コードの大文字小文字を変えることがある（ja-Hrkt → ja-hrkt）。
+    """
+    for name_entry in names:
+        if name_entry.get('language', {}).get('name', '').lower() == lang:
+            return name_entry.get('name')
+    return None
+
 def get_name_pair(species_data: dict) -> Optional[Dict[str, str]]:
     """種データから日本語名と英名のペアを抽出"""
     names = species_data.get('names', [])
     pokemon_id = species_data.get('id')
 
-    ja_name = None
-    en_name = None
-
-    for name_entry in names:
-        lang = name_entry.get('language', {}).get('name')
-        if lang == 'ja-Hrkt':
-            ja_name = name_entry.get('name')
-        elif lang == 'en':
-            en_name = name_entry.get('name')
+    ja_name = find_localized_name(names, 'ja-hrkt')
+    en_name = find_localized_name(names, 'en')
 
     if ja_name and en_name and pokemon_id:
         return {'ja': ja_name, 'en': en_name, 'id': pokemon_id}
     return None
+
+def get_variety_refs(species_data: dict, base_ja: str) -> List[Tuple[str, str]]:
+    """種データから非デフォルトの個体（フォルム）URLと種の日本語名を返す"""
+    return [
+        (base_ja, v['pokemon']['url'])
+        for v in species_data.get('varieties', [])
+        if not v.get('is_default')
+    ]
+
+def compose_ja(base_ja: str, form_ja: str) -> str:
+    """種名とフォルム名から表示用の日本語名を組み立てる
+
+    PokéAPI の form_names には 2 種類あり、メガフシギバナのように単体で
+    完結するものと、アローラのすがたのようにフォルムの呼称だけのものがある。
+    後者は種名が含まれないので合成する。
+    """
+    if base_ja in form_ja:
+        return form_ja
+    return f'{base_ja}（{form_ja}）'
+
+def slug_to_en(slug: str) -> str:
+    """英名を持たないフォルム（コライドン/ミライドンの各ビルド）用のフォールバック"""
+    return ' '.join(part.capitalize() for part in slug.split('-'))
+
+def fetch_form_entry(base_ja: str, pokemon_url: str) -> Optional[Dict[str, str]]:
+    """個体URLからフォルムのエントリを作る
+
+    pokemon と pokemon-form は id 体系が別なので、pokemon 経由で form を辿る。
+    日本語名を持たないフォルム（トーテム個体など）は None を返す。
+    """
+    pokemon_data = fetch_json(pokemon_url)
+    form_data = fetch_json(pokemon_data['forms'][0]['url'])
+
+    # イワンコ（マイペース）のように form_names ではなく names 側にだけ
+    # 日本語名を持つフォルムがある
+    form_ja = find_localized_name(form_data.get('form_names', []), 'ja-hrkt') or \
+        find_localized_name(form_data.get('names', []), 'ja-hrkt')
+    if not form_ja:
+        return None
+
+    form_en = find_localized_name(form_data.get('names', []), 'en')
+
+    return {
+        'ja': compose_ja(base_ja, form_ja),
+        'en': form_en or slug_to_en(pokemon_data['name']),
+        'id': pokemon_data['id'],
+        'slug': pokemon_data['name'],
+        'species_slug': pokemon_data['species']['name'],
+    }
+
+def dedupe_en(entries: List[Dict[str, str]]) -> None:
+    """英名が衝突するフォルムをスラッグ由来の名前に置き換える
+
+    英名は検索結果の出力値であり、スプライト取得のキーでもあるため一意である必要がある。
+    メガイエッサン♂/♀ のように PokéAPI 側で同じ英名を持つフォルムが存在する。
+    種のエントリは書き換えず、フォルム側だけを変える。
+    """
+    duplicates = {
+        en for en, count in Counter(e['en'] for e in entries).items() if count > 1
+    }
+
+    for entry in entries:
+        if entry['en'] in duplicates and 'slug' in entry:
+            entry['en'] = slug_to_en(entry['slug'])
+
+def form_tokens(entry: Dict[str, str]) -> List[str]:
+    """個体スラッグから種名を除いた、フォルムを表すトークン列"""
+    species_tokens = set(entry['species_slug'].split('-'))
+    return [t for t in entry['slug'].split('-') if t not in species_tokens]
+
+def disambiguate_ja(entries: List[Dict[str, str]]) -> None:
+    """日本語名が衝突するフォルムに英語の識別子を付けて一意にする
+
+    メテノのりゅうせいのすがた（色違い 7 件）のように、英語では区別される
+    フォルムが日本語では同名になることがある。検索キーは日本語名なので
+    （search.rs の HashMap）、同名のままでは選び分けられない。
+    識別子はグループ内で差分になるトークンだけを使う（Orange / Combat など）。
+    種のエントリは書き換えず、フォルム側だけを変える。
+    """
+    groups = defaultdict(list)
+    for entry in entries:
+        groups[entry['ja']].append(entry)
+
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+
+        forms = [e for e in group if 'slug' in e]
+        token_lists = [form_tokens(e) for e in forms]
+        if not token_lists:
+            continue
+        shared = set.intersection(*(set(t) for t in token_lists))
+
+        for entry, tokens in zip(forms, token_lists):
+            distinct = [t for t in tokens if t not in shared] or tokens
+            label = ' '.join(t.capitalize() for t in distinct)
+            # 「ロコン（アローラのすがた）」のように既に括弧付きなら中に足す
+            if entry['ja'].endswith('）'):
+                entry['ja'] = f'{entry["ja"][:-1]}・{label}）'
+            else:
+                entry['ja'] = f'{entry["ja"]}（{label}）'
 
 def main():
     output_file = sys.argv[1] if len(sys.argv) > 1 else 'names.json'
@@ -65,6 +179,7 @@ def main():
     species_list = fetch_json(f'{api_base}/pokemon-species?limit={total_count}')
 
     entries = []
+    variety_refs = []
     error_count = 0
     total = len(species_list['results'])
 
@@ -86,10 +201,48 @@ def main():
             name_pair = get_name_pair(species_data)
             if name_pair:
                 entries.append(name_pair)
+                variety_refs.extend(get_variety_refs(species_data, name_pair['ja']))
         except Exception as e:
             print(f'Error: Failed to process {species_ref["name"]}: {e}', file=sys.stderr)
             error_count += 1
             continue
+
+    # フォルム（アローラのすがた・メガシンカなど）は species ではなく
+    # pokemon-form 側にしかないので、非デフォルト個体を辿って追加する
+    print(f'\nProcessing {len(variety_refs)} forms...', file=sys.stderr)
+
+    def process_variety(ref):
+        base_ja, pokemon_url = ref
+        try:
+            return fetch_form_entry(base_ja, pokemon_url)
+        except Exception as e:
+            print(f'Error: Failed to process form {pokemon_url}: {e}', file=sys.stderr)
+            return e
+
+    with ThreadPoolExecutor(FORM_WORKERS) as executor:
+        results = list(executor.map(process_variety, variety_refs))
+
+    error_count += sum(1 for r in results if isinstance(r, Exception))
+    form_entries = [r for r in results if isinstance(r, dict)]
+    skipped = sum(1 for r in results if r is None)
+
+    print(f'Forms with names: {len(form_entries)} (skipped {skipped} without a Japanese name)', file=sys.stderr)
+
+    entries.extend(form_entries)
+
+    dedupe_en(entries)
+    disambiguate_ja(entries)
+    for entry in form_entries:
+        del entry['slug']
+        del entry['species_slug']
+
+    # 日本語名は検索キー、英名は検索結果の出力値かつスプライト取得のキーなので
+    # どちらも一意でなければならない（search.rs / sprite.rs の HashMap）
+    for field in ('ja', 'en'):
+        duplicates = [v for v, count in Counter(e[field] for e in entries).items() if count > 1]
+        if duplicates:
+            print(f'\n❌ Failed: duplicate {field} names: {duplicates}', file=sys.stderr)
+            sys.exit(1)
 
     # エントリをソート
     entries.sort(key=lambda x: x['ja'])
@@ -121,7 +274,8 @@ def main():
         print(f'\n❌ Failed: {error_count} errors occurred during processing', file=sys.stderr)
         sys.exit(1)
 
-    print(f'\n✅ All {total} species processed successfully', file=sys.stderr)
+    print(f'\n✅ All {total} species and {len(variety_refs)} forms processed successfully '
+          f'({len(entries)} entries)', file=sys.stderr)
 
 if __name__ == '__main__':
     main()
