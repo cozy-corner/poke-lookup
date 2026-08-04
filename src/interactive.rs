@@ -328,6 +328,32 @@ mod tests {
     }
 
     #[test]
+    fn test_display_highlight_clip_boundary() {
+        let item = create_test_item();
+        let visible = item.display.chars().count();
+
+        // 境界の1つ内側（visible - 1）は可視部として残る
+        let context = DisplayContext {
+            text: &item.match_text,
+            score: 0,
+            matches: Matches::CharIndices(&[visible - 1, visible - 2]),
+            container_width: 80,
+            highlight_attr: Default::default(),
+        };
+        assert!(item.display(context).has_attrs());
+
+        // 境界ちょうど（visible）は隠しローマ字部として落ちる
+        let context = DisplayContext {
+            text: &item.match_text,
+            score: 0,
+            matches: Matches::CharIndices(&[visible, visible + 1]),
+            container_width: 80,
+            highlight_attr: Default::default(),
+        };
+        assert!(!item.display(context).has_attrs());
+    }
+
+    #[test]
     fn test_output_returns_english_name() {
         // 確定時の返り値は表示文字列ではなく英名そのもの
         assert_eq!(create_test_item().output(), "Bulbasaur");
