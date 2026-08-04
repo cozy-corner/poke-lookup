@@ -174,8 +174,17 @@ fn is_vowel(c: char) -> bool {
     matches!(c, 'a' | 'i' | 'u' | 'e' | 'o')
 }
 
+/// ひらがなをカタカナへ寄せる。変換表はカタカナのみなので、
+/// フォルム名（あかつきのつばさ 等）を引けるようにするための前処理
+fn to_katakana(c: char) -> char {
+    match c {
+        'ぁ'..='ゖ' => char::from_u32(c as u32 + 0x60).unwrap_or(c),
+        _ => c,
+    }
+}
+
 fn to_romaji(katakana: &str, style: Style) -> String {
-    let chars: Vec<char> = katakana.chars().collect();
+    let chars: Vec<char> = katakana.chars().map(to_katakana).collect();
     let mut out = String::new();
     let mut i = 0;
     // 直前に ッ があったか。子音を重ねる対象は次の音なので持ち越す
@@ -273,6 +282,16 @@ mod tests {
     fn test_unknown_char_passes_through() {
         // 変換表にない文字は落とさずそのまま通す
         assert_eq!(variants("ポリゴン2"), vec!["porigon2"]);
+    }
+
+    #[test]
+    fn test_hiragana_is_normalized_to_katakana() {
+        // フォルム名はひらがな混じり（あかつきのつばさ 等）
+        assert_eq!(variants("すがた"), vec!["sugata"]);
+        assert_eq!(
+            variants("ロコン（アローラのすがた）"),
+            vec!["rokon（arooranosugata）"]
+        );
     }
 
     #[test]
