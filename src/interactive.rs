@@ -61,6 +61,10 @@ impl SkimItem for PokemonItem {
         AnsiString::new_str(&self.display, fragments)
     }
 
+    fn output(&self) -> std::borrow::Cow<'_, str> {
+        self.english.as_str().into()
+    }
+
     fn preview(&self, _context: PreviewContext) -> ItemPreview {
         ItemPreview::Text(format!("日本語: {}\n英語: {}", self.japanese, self.english))
     }
@@ -172,33 +176,25 @@ impl InteractiveSelector {
         }
 
         if let Some(item) = selected_items.selected_items.first() {
-            // 選択されたアイテムから英名を抽出
-            let text = item.text();
-            if text.contains(" → ") {
-                // UTF-8文字境界を考慮して分割
-                let parts: Vec<&str> = text.split(" → ").collect();
-                if parts.len() == 2 {
-                    let english_name = parts[1].trim().to_string();
+            let english_name = item.output().to_string();
 
-                    // スプライト表示とナビゲーション処理
-                    #[cfg(feature = "sprites")]
-                    if let Some(ref sprite_service) = self.sprite_service {
-                        if let Some(final_selection) = self.show_sprite_with_navigation(
-                            &english_name,
-                            sprite_service,
-                            candidates,
-                            initial_query,
-                        )? {
-                            return Ok(Some(final_selection));
-                        } else {
-                            // ESCが押されたら再選択のためにループに戻る
-                            return self.run_skim_selection(candidates, initial_query);
-                        }
-                    }
-
-                    return Ok(Some(english_name));
+            // スプライト表示とナビゲーション処理
+            #[cfg(feature = "sprites")]
+            if let Some(ref sprite_service) = self.sprite_service {
+                if let Some(final_selection) = self.show_sprite_with_navigation(
+                    &english_name,
+                    sprite_service,
+                    candidates,
+                    initial_query,
+                )? {
+                    return Ok(Some(final_selection));
+                } else {
+                    // ESCが押されたら再選択のためにループに戻る
+                    return self.run_skim_selection(candidates, initial_query);
                 }
             }
+
+            return Ok(Some(english_name));
         }
 
         Ok(None)
@@ -326,6 +322,12 @@ mod tests {
         };
 
         assert!(item.display(context).has_attrs());
+    }
+
+    #[test]
+    fn test_output_returns_english_name() {
+        // 確定時の返り値は表示文字列ではなく英名そのもの
+        assert_eq!(create_test_item().output(), "Bulbasaur");
     }
 
     #[test]
