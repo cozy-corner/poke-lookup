@@ -202,8 +202,20 @@ fn download_if_missing(client: &Client, url: &str, cry_path: &Path) -> Result<()
 
     let content = response.bytes().context("Failed to read cry data")?;
 
-    std::fs::write(cry_path, content)
-        .with_context(|| format!("Failed to save cry to {}", cry_path.display()))?;
+    // 一時ファイルに書いてから rename する。ダウンロードはバックグラウンドスレッドで
+    // 走っており、Ctrl-C や process::exit でいつでも巻き添えで死にうる。直接書くと
+    // 途中まで書けたファイルが残り、以後 exists() が true になって永久に無音になる
+    let tmp_path = cry_path.with_extension(format!("ogg.{}.part", std::process::id()));
+    std::fs::write(&tmp_path, content)
+        .with_context(|| format!("Failed to save cry to {}", tmp_path.display()))?;
+
+    std::fs::rename(&tmp_path, cry_path).with_context(|| {
+        format!(
+            "Failed to move {} into place at {}",
+            tmp_path.display(),
+            cry_path.display()
+        )
+    })?;
 
     Ok(())
 }
@@ -320,6 +332,36 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(fs::read(&cry_path).unwrap(), mock_audio);
         mock.assert();
+    }
+
+    #[test]
+    fn test_download_leaves_no_partial_file_behind() {
+        use httpmock::prelude::*;
+
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/cries/pokemon/latest/25.ogg");
+            then.status(200).body(b"audio");
+        });
+
+        let temp_dir = tempdir().unwrap();
+        let cry_path = temp_dir.path().join("25.ogg");
+
+        download_if_missing(
+            &Client::new(),
+            &server.url("/cries/pokemon/latest/25.ogg"),
+            &cry_path,
+        )
+        .unwrap();
+
+        // rename 後に .part が残っていないこと
+        let leftovers: Vec<_> = fs::read_dir(temp_dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| name.contains(".part"))
+            .collect();
+        assert!(leftovers.is_empty(), "partial files left: {:?}", leftovers);
+        assert_eq!(fs::read(&cry_path).unwrap(), b"audio");
     }
 
     #[test]
