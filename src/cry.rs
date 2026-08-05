@@ -15,6 +15,11 @@ use std::sync::{Arc, Mutex};
 #[cfg(feature = "cries")]
 use std::thread::JoinHandle;
 
+/// 鳴き声の取得に許す時間。鳴き声1件は約7KBなので、これを超えるなら
+/// 回線かGitHub側の問題であって、待っても鳴る見込みは薄い
+#[cfg(feature = "cries")]
+const CRY_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
 /// 鳴き声の取得・再生を管理するサービス
 #[cfg(feature = "cries")]
 pub struct CryService {
@@ -77,8 +82,11 @@ impl CryService {
             })?;
         }
 
+        // 取得スレッドは終了前に join されるので、応答が返らないと CLI 自体が
+        // 止まる。鳴き声は付加機能なので、待たせるくらいなら諦める
         let client = Client::builder()
             .user_agent("poke-lookup/0.1.0")
+            .timeout(CRY_FETCH_TIMEOUT)
             .build()
             .context("Failed to create HTTP client")?;
 
