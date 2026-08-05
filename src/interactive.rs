@@ -1,3 +1,5 @@
+#[cfg(feature = "cries")]
+use crate::cry::CryService;
 use crate::search::SearchService;
 #[cfg(feature = "sprites")]
 use crate::sprite::SpriteService;
@@ -89,6 +91,8 @@ pub struct InteractiveSelector {
     search_service: SearchService,
     #[cfg(feature = "sprites")]
     sprite_service: Option<SpriteService>,
+    #[cfg(feature = "cries")]
+    cry_service: Option<CryService>,
 }
 
 impl InteractiveSelector {
@@ -101,6 +105,31 @@ impl InteractiveSelector {
             search_service,
             #[cfg(feature = "sprites")]
             sprite_service,
+            #[cfg(feature = "cries")]
+            cry_service: None,
+        }
+    }
+
+    /// 鳴き声再生の有効/無効を設定
+    /// 有効時のみ CryService を初期化する（辞書の再読み込みを避けるため）
+    #[cfg_attr(not(feature = "cries"), allow(unused_mut, unused_variables))]
+    pub fn play_cry(mut self, enabled: bool) -> Self {
+        #[cfg(feature = "cries")]
+        {
+            self.cry_service = if enabled {
+                CryService::new().ok()
+            } else {
+                None
+            };
+        }
+        self
+    }
+
+    /// 鳴き声が有効なら再生（失敗は静かに無視）
+    #[cfg(feature = "cries")]
+    fn play_cry_if_enabled(&self, english_name: &str) {
+        if let Some(ref cry_service) = self.cry_service {
+            let _ = cry_service.play_cry_for_pokemon(english_name);
         }
     }
 
@@ -112,7 +141,10 @@ impl InteractiveSelector {
     pub fn select_interactive(&self, query: &str) -> Result<Option<String>> {
         // まず完全一致を試す
         if let Some(exact) = self.search_service.search_exact(query) {
-            return Ok(Some(exact.to_string()));
+            let english_name = exact.to_string();
+            #[cfg(feature = "cries")]
+            self.play_cry_if_enabled(&english_name);
+            return Ok(Some(english_name));
         }
 
         // 部分一致で候補を取得
@@ -182,6 +214,11 @@ impl InteractiveSelector {
 
         if let Some(item) = selected_items.selected_items.first() {
             let english_name = item.output().to_string();
+
+            // 鳴き声を先に再生。スプライト表示は Enter/ESC 待ちでブロックするため、
+            // その後に鳴らすと確定するまで音が出ない
+            #[cfg(feature = "cries")]
+            self.play_cry_if_enabled(&english_name);
 
             // スプライト表示とナビゲーション処理
             #[cfg(feature = "sprites")]
