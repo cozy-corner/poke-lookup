@@ -5,9 +5,15 @@ use directories::ProjectDirs;
 #[cfg(feature = "cries")]
 use reqwest::blocking::Client;
 #[cfg(feature = "cries")]
+use std::cell::RefCell;
+#[cfg(feature = "cries")]
 use std::collections::HashMap;
 #[cfg(feature = "cries")]
 use std::path::{Path, PathBuf};
+#[cfg(feature = "cries")]
+use std::sync::{Arc, Mutex};
+#[cfg(feature = "cries")]
+use std::thread::JoinHandle;
 
 /// 鳴き声の取得・再生を管理するサービス
 #[cfg(feature = "cries")]
@@ -16,6 +22,38 @@ pub struct CryService {
     client: Client,
     base_url: String,
     id_map: HashMap<String, u32>,
+    /// 音声デバイスは開くのに約88msかかる（実測）。起動時に裏で開き始め、
+    /// 実際に鳴らすスレッドが受け取る。デバイスが無い環境では None になり、
+    /// 再生は黙ってスキップされる。
+    sink: Arc<Mutex<SinkSlot>>,
+    /// 取得〜再生を行っているスレッド。プロセス終了前に wait() で待つ
+    playing: RefCell<Option<JoinHandle<()>>>,
+}
+
+/// 起動時に投げたデバイスオープンの、開いている最中／開き終わった状態
+#[cfg(feature = "cries")]
+enum SinkSlot {
+    Opening(JoinHandle<Option<rodio::MixerDeviceSink>>),
+    Ready(Option<rodio::MixerDeviceSink>),
+}
+
+#[cfg(feature = "cries")]
+impl SinkSlot {
+    /// デバイスが開き終わるのを待って参照を渡す。待つのは最初の1回だけ
+    fn with<R>(slot: &Mutex<Self>, f: impl FnOnce(&rodio::MixerDeviceSink) -> R) -> Option<R> {
+        let mut slot = slot.lock().ok()?;
+        if matches!(*slot, SinkSlot::Opening(_)) {
+            let SinkSlot::Opening(handle) = std::mem::replace(&mut *slot, SinkSlot::Ready(None))
+            else {
+                unreachable!()
+            };
+            *slot = SinkSlot::Ready(handle.join().unwrap_or(None));
+        }
+        match &*slot {
+            SinkSlot::Ready(sink) => sink.as_ref().map(f),
+            SinkSlot::Opening(_) => unreachable!(),
+        }
+    }
 }
 
 #[cfg(feature = "cries")]
@@ -58,7 +96,19 @@ impl CryService {
             client,
             base_url: "https://raw.githubusercontent.com/PokeAPI/cries/main".to_string(),
             id_map,
+            sink: Arc::new(Mutex::new(SinkSlot::Opening(std::thread::spawn(
+                Self::open_sink,
+            )))),
+            playing: RefCell::new(None),
         })
+    }
+
+    /// 音声デバイスを開く。失敗しても鳴らないだけなので None を返す
+    fn open_sink() -> Option<rodio::MixerDeviceSink> {
+        let mut sink = rodio::DeviceSinkBuilder::open_default_sink().ok()?;
+        // drop 時の警告ログが CLI 出力に混ざるのを防ぐ
+        sink.log_on_drop(false);
+        Some(sink)
     }
 
     /// 英名からポケモンIDを取得
@@ -71,89 +121,52 @@ impl CryService {
         self.cache_dir.join(format!("{}.ogg", pokemon_id))
     }
 
-    /// ポケモンの鳴き声を取得して再生
+    /// ポケモンの鳴き声の取得と再生をバックグラウンドで開始する
+    ///
+    /// ダウンロードもデバイスの準備待ちもスレッド側でやるので、呼び出し側は
+    /// すぐ戻って英名の出力やスプライト描画に進める。
+    /// 鳴り終わりはプロセス終了前に [`Self::wait`] で待つ。
     pub fn play_cry_for_pokemon(&self, english_name: &str) -> Result<()> {
-        if let Some(pokemon_id) = self.get_pokemon_id(english_name) {
-            match self.fetch_cry(pokemon_id) {
-                Ok(cry_path) => {
-                    // 再生失敗（音声デバイスなし等）は機能の主目的ではないので静かに無視
-                    let _ = self.play_cry(&cry_path);
-                }
-                Err(_) => {
-                    // 静かに失敗
-                }
-            }
-        }
-        Ok(())
-    }
+        let Some(pokemon_id) = self.get_pokemon_id(english_name) else {
+            return Ok(());
+        };
 
-    /// PokeAPIのcriesリポジトリから鳴き声をダウンロード
-    pub fn fetch_cry(&self, pokemon_id: u32) -> Result<PathBuf> {
+        // 前の鳴き声が残っていれば鳴り終わってから次に移る
+        // （ESC で選び直したときに声が重ならないように）
+        self.wait();
+
         let cry_path = self.get_cry_path(pokemon_id);
+        let url = self.cry_url(pokemon_id);
+        let client = self.client.clone();
+        let sink = Arc::clone(&self.sink);
 
-        if cry_path.exists() {
-            return Ok(cry_path);
-        }
-
-        let url = format!("{}/cries/pokemon/latest/{}.ogg", self.base_url, pokemon_id);
-
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .with_context(|| format!("Failed to fetch cry for Pokemon ID {}", pokemon_id))?;
-
-        if !response.status().is_success() {
-            return Err(anyhow::anyhow!(
-                "Failed to download cry for Pokemon ID {}: HTTP {}",
-                pokemon_id,
-                response.status()
-            ));
-        }
-
-        let content = response.bytes().context("Failed to read cry data")?;
-
-        std::fs::write(&cry_path, content)
-            .with_context(|| format!("Failed to save cry to {}", cry_path.display()))?;
-
-        Ok(cry_path)
-    }
-
-    /// 鳴き声を再生（再生完了まで待つ）
-    pub fn play_cry(&self, cry_path: &Path) -> Result<()> {
-        use std::fs::File;
-        use std::io::BufReader;
-
-        let mut handle = rodio::DeviceSinkBuilder::open_default_sink()
-            .context("Failed to open default audio device")?;
-        // drop 時の警告ログが CLI 出力に混ざるのを防ぐ
-        handle.log_on_drop(false);
-
-        let file = BufReader::new(
-            File::open(cry_path)
-                .with_context(|| format!("Failed to open cry file: {}", cry_path.display()))?,
-        );
-
-        // 拡張子は .ogg だが実体は MP3。Decoder は中身で判定するのでそのまま渡せる
-        let player = rodio::play(handle.mixer(), file)
-            .with_context(|| format!("Failed to play cry: {}", cry_path.display()))?;
-
-        // 待たずに抜けると handle が drop されて音が途中で切れる
-        player.sleep_until_end();
+        *self.playing.borrow_mut() = Some(std::thread::spawn(move || {
+            // 取得もデバイス待ちも、失敗したら黙って諦める。鳴らないだけで
+            // 英名を出すという本来の目的には影響しない
+            if download_if_missing(&client, &url, &cry_path).is_err() {
+                return;
+            }
+            SinkSlot::with(&sink, |sink| play_and_wait(sink, &cry_path));
+        }));
 
         Ok(())
     }
 
-    #[cfg(test)]
-    pub fn with_base_url(cache_dir: PathBuf, client: Client, base_url: String) -> Self {
-        Self {
-            cache_dir,
-            client,
-            base_url,
-            id_map: HashMap::new(),
+    /// 再生中の鳴き声が鳴り終わるまで待つ
+    ///
+    /// 待たずにプロセスが終わると音が途中で切れる。再生していなければ即座に返る。
+    pub fn wait(&self) {
+        if let Some(handle) = self.playing.borrow_mut().take() {
+            let _ = handle.join();
         }
     }
 
+    /// 鳴き声の配信URL
+    fn cry_url(&self, pokemon_id: u32) -> String {
+        format!("{}/cries/pokemon/latest/{}.ogg", self.base_url, pokemon_id)
+    }
+
+    // テストでは音声デバイスを開かない（CIランナーには存在しないため）
     #[cfg(test)]
     pub fn for_test(cache_dir: PathBuf, id_map: HashMap<String, u32>) -> Self {
         Self {
@@ -161,7 +174,53 @@ impl CryService {
             client: Client::new(),
             base_url: "test://mock".to_string(),
             id_map,
+            sink: Arc::new(Mutex::new(SinkSlot::Ready(None))),
+            playing: RefCell::new(None),
         }
+    }
+}
+
+/// 未取得なら鳴き声をダウンロードして保存する
+#[cfg(feature = "cries")]
+fn download_if_missing(client: &Client, url: &str, cry_path: &Path) -> Result<()> {
+    if cry_path.exists() {
+        return Ok(());
+    }
+
+    let response = client
+        .get(url)
+        .send()
+        .with_context(|| format!("Failed to fetch cry: {}", url))?;
+
+    if !response.status().is_success() {
+        return Err(anyhow::anyhow!(
+            "Failed to download cry from {}: HTTP {}",
+            url,
+            response.status()
+        ));
+    }
+
+    let content = response.bytes().context("Failed to read cry data")?;
+
+    std::fs::write(cry_path, content)
+        .with_context(|| format!("Failed to save cry to {}", cry_path.display()))?;
+
+    Ok(())
+}
+
+/// 鳴き声を再生して鳴り終わるまで待つ
+#[cfg(feature = "cries")]
+fn play_and_wait(sink: &rodio::MixerDeviceSink, cry_path: &Path) {
+    use std::fs::File;
+    use std::io::BufReader;
+
+    let Ok(file) = File::open(cry_path) else {
+        return;
+    };
+
+    // 拡張子は .ogg だが実体は MP3。Decoder は中身で判定するのでそのまま渡せる
+    if let Ok(player) = rodio::play(sink.mixer(), BufReader::new(file)) {
+        player.sleep_until_end();
     }
 }
 
@@ -175,21 +234,23 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn test_for_test_creates_service() {
-        let temp_dir = tempdir().unwrap();
-        let id_map = HashMap::new();
-
-        let service = CryService::for_test(temp_dir.path().to_path_buf(), id_map);
-        assert_eq!(service.base_url, "test://mock");
-    }
-
-    #[test]
     fn test_cry_path() {
         let temp_dir = tempdir().unwrap();
         let service = CryService::for_test(temp_dir.path().to_path_buf(), HashMap::new());
 
         assert_eq!(service.get_cry_path(25), temp_dir.path().join("25.ogg"));
         assert_eq!(service.get_cry_path(1), temp_dir.path().join("1.ogg"));
+    }
+
+    #[test]
+    fn test_cry_url_uses_latest() {
+        let temp_dir = tempdir().unwrap();
+        let service = CryService::for_test(temp_dir.path().to_path_buf(), HashMap::new());
+
+        assert_eq!(
+            service.cry_url(25),
+            "test://mock/cries/pokemon/latest/25.ogg"
+        );
     }
 
     #[test]
@@ -207,32 +268,37 @@ mod tests {
     }
 
     #[test]
-    fn test_fetch_cry_cached() {
+    fn test_play_cry_for_unknown_pokemon_is_noop() {
         let temp_dir = tempdir().unwrap();
-        let service = CryService::with_base_url(
-            temp_dir.path().to_path_buf(),
-            Client::new(),
-            "http://dummy.example.com".to_string(),
-        );
+        let service = CryService::for_test(temp_dir.path().to_path_buf(), HashMap::new());
 
-        let cry_path = service.get_cry_path(25);
-        fs::write(&cry_path, b"cached_audio").unwrap();
-
-        // キャッシュがあればダウンロードせずにそのパスを返す
-        let result = service.fetch_cry(25);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), cry_path);
-
-        let content = fs::read(&cry_path).unwrap();
-        assert_eq!(content, b"cached_audio");
+        // 辞書に無ければスレッドも立てずに戻る
+        assert!(service.play_cry_for_pokemon("Unknown").is_ok());
+        service.wait();
     }
 
     #[test]
-    fn test_fetch_cry_download_success() {
+    fn test_download_skipped_when_cached() {
+        let temp_dir = tempdir().unwrap();
+        let cry_path = temp_dir.path().join("25.ogg");
+        fs::write(&cry_path, b"cached_audio").unwrap();
+
+        // キャッシュがあれば到達不能なURLでも成功し、中身も上書きされない
+        let result = download_if_missing(
+            &Client::new(),
+            "http://127.0.0.1:1/cries/pokemon/latest/25.ogg",
+            &cry_path,
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(fs::read(&cry_path).unwrap(), b"cached_audio");
+    }
+
+    #[test]
+    fn test_download_success() {
         use httpmock::prelude::*;
 
         let server = MockServer::start();
-
         let mock_audio = b"ID3\x04\x00\x00\x00\x00\x00\x00dummy audio data".to_vec();
 
         let mock = server.mock(|when, then| {
@@ -243,45 +309,40 @@ mod tests {
         });
 
         let temp_dir = tempdir().unwrap();
-        let client = Client::builder()
-            .user_agent("poke-lookup/0.1.0")
-            .build()
-            .unwrap();
+        let cry_path = temp_dir.path().join("25.ogg");
 
-        let service =
-            CryService::with_base_url(temp_dir.path().to_path_buf(), client, server.url(""));
+        let result = download_if_missing(
+            &Client::new(),
+            &server.url("/cries/pokemon/latest/25.ogg"),
+            &cry_path,
+        );
 
-        let result = service.fetch_cry(25);
         assert!(result.is_ok());
-
-        let cry_path = result.unwrap();
-        assert!(cry_path.exists());
         assert_eq!(fs::read(&cry_path).unwrap(), mock_audio);
-
         mock.assert();
     }
 
     #[test]
-    fn test_fetch_cry_download_failure() {
+    fn test_download_failure_leaves_no_file() {
         use httpmock::prelude::*;
 
         let server = MockServer::start();
-
         let _mock = server.mock(|when, then| {
             when.method(GET).path("/cries/pokemon/latest/9999.ogg");
-            then.status(404)
-                .header("content-type", "text/html")
-                .body("Not Found");
+            then.status(404).body("Not Found");
         });
 
         let temp_dir = tempdir().unwrap();
-        let service =
-            CryService::with_base_url(temp_dir.path().to_path_buf(), Client::new(), server.url(""));
+        let cry_path = temp_dir.path().join("9999.ogg");
 
-        let result = service.fetch_cry(9999);
+        let result = download_if_missing(
+            &Client::new(),
+            &server.url("/cries/pokemon/latest/9999.ogg"),
+            &cry_path,
+        );
+
         assert!(result.is_err());
-
         // 失敗時に壊れたファイルを残さない
-        assert!(!service.get_cry_path(9999).exists());
+        assert!(!cry_path.exists());
     }
 }

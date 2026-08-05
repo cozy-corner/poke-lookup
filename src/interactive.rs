@@ -125,11 +125,20 @@ impl InteractiveSelector {
         self
     }
 
-    /// 鳴き声が有効なら再生（失敗は静かに無視）
+    /// 鳴き声が有効なら再生を開始（失敗は静かに無視）。鳴り終わりは待たない
     #[cfg(feature = "cries")]
     fn play_cry_if_enabled(&self, english_name: &str) {
         if let Some(ref cry_service) = self.cry_service {
             let _ = cry_service.play_cry_for_pokemon(english_name);
+        }
+    }
+
+    /// 再生中の鳴き声を待つ。プロセス終了前に呼ばないと音が途中で切れる
+    #[cfg_attr(not(feature = "cries"), allow(clippy::unused_self))]
+    pub fn wait_for_cry(&self) {
+        #[cfg(feature = "cries")]
+        if let Some(ref cry_service) = self.cry_service {
+            cry_service.wait();
         }
     }
 

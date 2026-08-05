@@ -134,6 +134,9 @@ fn search_pokemon(
                 }
             }
 
+            // 鳴き声の鳴り終わりを待つ（スプライト描画と並行して再生されている）
+            selector.wait_for_cry();
+
             Ok(0)
         }
         None => {
@@ -172,6 +175,9 @@ fn search_interactive_all(
                     display_sprite_for_pokemon(&english_name, &search_service)?;
                 }
             }
+
+            // 鳴き声の鳴り終わりを待つ（スプライト描画と並行して再生されている）
+            selector.wait_for_cry();
 
             Ok(0)
         }
