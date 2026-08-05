@@ -15,12 +15,10 @@ use std::sync::{Arc, Mutex};
 #[cfg(feature = "cries")]
 use std::thread::JoinHandle;
 
-/// 鳴き声の取得に許す時間。鳴き声1件は約7KBなので、これを超えるなら
-/// 回線かGitHub側の問題であって、待っても鳴る見込みは薄い
+/// 鳴き声1件は約7KB。これを超えるなら待っても鳴る見込みは薄い
 #[cfg(feature = "cries")]
 const CRY_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 
-/// 鳴き声の取得・再生を管理するサービス
 #[cfg(feature = "cries")]
 pub struct CryService {
     cache_dir: PathBuf,
@@ -31,13 +29,12 @@ pub struct CryService {
     /// 実際に鳴らすスレッドが受け取る。デバイスが無い環境では None になり、
     /// 再生は黙ってスキップされる。
     sink: Arc<Mutex<SinkSlot>>,
-    /// 取得〜再生を行っているスレッド。プロセス終了前に wait() で待つ
+    /// 待たずにプロセスが終わると音が途中で切れるので、終了前に wait() する
     playing: RefCell<Option<JoinHandle<()>>>,
-    /// 再生中のプレイヤー。選び直したときに前の鳴き声を止めるために共有する
+    /// 選び直したときに前の鳴き声を止めるためにスレッドと共有する
     player: Arc<Mutex<Option<rodio::Player>>>,
 }
 
-/// 起動時に投げたデバイスオープンの、開いている最中／開き終わった状態
 #[cfg(feature = "cries")]
 enum SinkSlot {
     Opening(JoinHandle<Option<rodio::MixerDeviceSink>>),
@@ -46,7 +43,6 @@ enum SinkSlot {
 
 #[cfg(feature = "cries")]
 impl SinkSlot {
-    /// デバイスが開き終わるのを待って参照を渡す。待つのは最初の1回だけ
     fn with<R>(slot: &Mutex<Self>, f: impl FnOnce(&rodio::MixerDeviceSink) -> R) -> Option<R> {
         let mut slot = slot.lock().ok()?;
         if matches!(*slot, SinkSlot::Opening(_)) {
@@ -65,7 +61,6 @@ impl SinkSlot {
 
 #[cfg(feature = "cries")]
 impl CryService {
-    /// 新しいCryServiceインスタンスを作成
     pub fn new() -> Result<Self> {
         use crate::data::DataLoader;
 
@@ -92,7 +87,6 @@ impl CryService {
             .build()
             .context("Failed to create HTTP client")?;
 
-        // Load Pokemon ID mapping
         let loader = DataLoader::new()?;
         let dictionary = loader.load_dictionary()?;
         let id_map = dictionary
@@ -114,7 +108,7 @@ impl CryService {
         })
     }
 
-    /// 音声デバイスを開く。失敗しても鳴らないだけなので None を返す
+    /// 失敗しても鳴らないだけなので None を返す
     fn open_sink() -> Option<rodio::MixerDeviceSink> {
         let mut sink = rodio::DeviceSinkBuilder::open_default_sink().ok()?;
         // drop 時の警告ログが CLI 出力に混ざるのを防ぐ
@@ -122,31 +116,23 @@ impl CryService {
         Some(sink)
     }
 
-    /// 英名からポケモンIDを取得
     pub fn get_pokemon_id(&self, english_name: &str) -> Option<u32> {
         self.id_map.get(english_name).copied()
     }
 
-    /// ポケモンIDからローカルキャッシュの鳴き声パスを取得
     pub fn get_cry_path(&self, pokemon_id: u32) -> PathBuf {
         self.cache_dir.join(format!("{}.ogg", pokemon_id))
     }
 
-    /// ポケモンの鳴き声の取得と再生をバックグラウンドで開始する
-    ///
-    /// ダウンロードもデバイスの準備待ちもスレッド側でやるので、呼び出し側は
-    /// すぐ戻って英名の出力やスプライト描画に進める。
-    /// 鳴り終わりはプロセス終了前に [`Self::wait`] で待つ。
-    ///
-    /// 取得も再生も失敗しうるが、鳴らないだけで英名を出すという本来の目的には
-    /// 影響しないため、エラーは返さず握り潰す。
+    /// 鳴り終わりは [`Self::wait`] で待つこと。
+    /// 失敗しても鳴らないだけなのでエラーは返さない。
     pub fn play_cry_for_pokemon(&self, english_name: &str) {
         let Some(pokemon_id) = self.get_pokemon_id(english_name) else {
             return;
         };
 
-        // 前の鳴き声は止めてから次に移る。鳴り終わるまで待つと、ESC で選び直した
-        // 直後に「捨てたはずのポケモンの声を最後まで聞かされる」ことになる
+        // 待つのではなく止める。ESC で選び直した直後に、捨てたはずのポケモンの
+        // 声を最後まで聞かされないように
         self.stop();
 
         let cry_path = self.get_cry_path(pokemon_id);
@@ -156,8 +142,6 @@ impl CryService {
         let player_slot = Arc::clone(&self.player);
 
         *self.playing.borrow_mut() = Some(std::thread::spawn(move || {
-            // 取得もデバイス待ちも、失敗したら黙って諦める。鳴らないだけで
-            // 英名を出すという本来の目的には影響しない
             if download_if_missing(&client, &url, &cry_path).is_err() {
                 return;
             }
@@ -167,7 +151,6 @@ impl CryService {
         }));
     }
 
-    /// 再生中の鳴き声を止めてスレッドの後始末をする
     fn stop(&self) {
         if let Some(player) = self.player.lock().ok().and_then(|mut p| p.take()) {
             player.stop();
@@ -175,16 +158,13 @@ impl CryService {
         self.wait();
     }
 
-    /// 再生中の鳴き声が鳴り終わるまで待つ
-    ///
-    /// 待たずにプロセスが終わると音が途中で切れる。再生していなければ即座に返る。
+    /// 待たずにプロセスが終わると音が途中で切れる
     pub fn wait(&self) {
         if let Some(handle) = self.playing.borrow_mut().take() {
             let _ = handle.join();
         }
     }
 
-    /// 鳴き声の配信URL
     fn cry_url(&self, pokemon_id: u32) -> String {
         format!("{}/cries/pokemon/latest/{}.ogg", self.base_url, pokemon_id)
     }
@@ -204,7 +184,6 @@ impl CryService {
     }
 }
 
-/// 未取得なら鳴き声をダウンロードして保存する
 #[cfg(feature = "cries")]
 fn download_if_missing(client: &Client, url: &str, cry_path: &Path) -> Result<()> {
     if cry_path.exists() {
@@ -226,9 +205,8 @@ fn download_if_missing(client: &Client, url: &str, cry_path: &Path) -> Result<()
 
     let content = response.bytes().context("Failed to read cry data")?;
 
-    // 一時ファイルに書いてから rename する。ダウンロードはバックグラウンドスレッドで
-    // 走っており、Ctrl-C や process::exit でいつでも巻き添えで死にうる。直接書くと
-    // 途中まで書けたファイルが残り、以後 exists() が true になって永久に無音になる
+    // このスレッドは Ctrl-C や process::exit で巻き添えで死にうる。直接書くと
+    // 途中まで書けたファイルが残り、exists() が true になって永久に無音になる
     let tmp_path = cry_path.with_extension(format!("ogg.{}.part", std::process::id()));
     std::fs::write(&tmp_path, content)
         .with_context(|| format!("Failed to save cry to {}", tmp_path.display()))?;
@@ -244,9 +222,7 @@ fn download_if_missing(client: &Client, url: &str, cry_path: &Path) -> Result<()
     Ok(())
 }
 
-/// 鳴き声を再生して鳴り終わるまで待つ
-///
-/// 再生中のプレイヤーを `player_slot` に置くことで、呼び出し側から stop() できる。
+/// 再生中のプレイヤーを `player_slot` に置くので、呼び出し側から stop() できる
 #[cfg(feature = "cries")]
 fn play_and_wait(
     sink: &rodio::MixerDeviceSink,
@@ -265,15 +241,13 @@ fn play_and_wait(
         return;
     };
 
-    // 呼び出し側が stop() できるよう、プレイヤーを共有スロットに預ける
     if let Ok(mut slot) = player_slot.lock() {
         *slot = Some(player);
     } else {
         return;
     }
 
-    // player.sleep_until_end() ではなくポーリングで待つ。プレイヤーはスロットに
-    // 預けてしまっており、ロックを保持したまま待つと stop() 側が固まるため
+    // sleep_until_end() を使うとロックを保持したまま待つことになり、stop() 側が固まる
     loop {
         let done = match player_slot.lock() {
             Ok(slot) => match slot.as_ref() {
@@ -290,8 +264,7 @@ fn play_and_wait(
     }
 }
 
-// 再生そのものは音声デバイスを必要とするため CI では検証できない。
-// ここではダウンロード・キャッシュ・ID解決のみをテストする。
+// 再生自体は音声デバイスが要るため CI では検証できない
 #[cfg(test)]
 #[cfg(feature = "cries")]
 mod tests {

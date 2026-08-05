@@ -110,14 +110,13 @@ impl InteractiveSelector {
         }
     }
 
-    /// 鳴き声再生の有効/無効を設定
     /// 有効時のみ CryService を初期化する（辞書の再読み込みを避けるため）
     #[cfg_attr(not(feature = "cries"), allow(unused_mut, unused_variables))]
     pub fn play_cry(mut self, enabled: bool) -> Self {
         #[cfg(feature = "cries")]
         {
             self.cry_service = if enabled {
-                // -c は明示的な要求なので、初期化に失敗したら理由を伝える。
+                // -c は明示的な要求なので、鳴らない理由は伝える。
                 // stdout はパイプライン連携のために汚さない
                 match CryService::new() {
                     Ok(service) => Some(service),
@@ -133,7 +132,7 @@ impl InteractiveSelector {
         self
     }
 
-    /// 鳴き声が有効なら再生を開始（失敗は静かに無視）。鳴り終わりは待たない
+    /// 鳴り終わりは待たない
     #[cfg(feature = "cries")]
     fn play_cry_if_enabled(&self, english_name: &str) {
         if let Some(ref cry_service) = self.cry_service {
@@ -141,7 +140,7 @@ impl InteractiveSelector {
         }
     }
 
-    /// 再生中の鳴き声を待つ。プロセス終了前に呼ばないと音が途中で切れる
+    /// プロセス終了前に呼ばないと音が途中で切れる
     #[cfg_attr(not(feature = "cries"), allow(clippy::unused_self))]
     pub fn wait_for_cry(&self) {
         #[cfg(feature = "cries")]
