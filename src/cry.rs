@@ -33,6 +33,8 @@ pub struct CryService {
     sink: Arc<Mutex<SinkSlot>>,
     /// 取得〜再生を行っているスレッド。プロセス終了前に wait() で待つ
     playing: RefCell<Option<JoinHandle<()>>>,
+    /// 再生中のプレイヤー。選び直したときに前の鳴き声を止めるために共有する
+    player: Arc<Mutex<Option<rodio::Player>>>,
 }
 
 /// 起動時に投げたデバイスオープンの、開いている最中／開き終わった状態
@@ -108,6 +110,7 @@ impl CryService {
                 Self::open_sink,
             )))),
             playing: RefCell::new(None),
+            player: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -139,14 +142,15 @@ impl CryService {
             return Ok(());
         };
 
-        // 前の鳴き声が残っていれば鳴り終わってから次に移る
-        // （ESC で選び直したときに声が重ならないように）
-        self.wait();
+        // 前の鳴き声は止めてから次に移る。鳴り終わるまで待つと、ESC で選び直した
+        // 直後に「捨てたはずのポケモンの声を最後まで聞かされる」ことになる
+        self.stop();
 
         let cry_path = self.get_cry_path(pokemon_id);
         let url = self.cry_url(pokemon_id);
         let client = self.client.clone();
         let sink = Arc::clone(&self.sink);
+        let player_slot = Arc::clone(&self.player);
 
         *self.playing.borrow_mut() = Some(std::thread::spawn(move || {
             // 取得もデバイス待ちも、失敗したら黙って諦める。鳴らないだけで
@@ -154,10 +158,20 @@ impl CryService {
             if download_if_missing(&client, &url, &cry_path).is_err() {
                 return;
             }
-            SinkSlot::with(&sink, |sink| play_and_wait(sink, &cry_path));
+            SinkSlot::with(&sink, |sink| {
+                play_and_wait(sink, &cry_path, &player_slot);
+            });
         }));
 
         Ok(())
+    }
+
+    /// 再生中の鳴き声を止めてスレッドの後始末をする
+    fn stop(&self) {
+        if let Some(player) = self.player.lock().ok().and_then(|mut p| p.take()) {
+            player.stop();
+        }
+        self.wait();
     }
 
     /// 再生中の鳴き声が鳴り終わるまで待つ
@@ -184,6 +198,7 @@ impl CryService {
             id_map,
             sink: Arc::new(Mutex::new(SinkSlot::Ready(None))),
             playing: RefCell::new(None),
+            player: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -229,8 +244,14 @@ fn download_if_missing(client: &Client, url: &str, cry_path: &Path) -> Result<()
 }
 
 /// 鳴き声を再生して鳴り終わるまで待つ
+///
+/// 再生中のプレイヤーを `player_slot` に置くことで、呼び出し側から stop() できる。
 #[cfg(feature = "cries")]
-fn play_and_wait(sink: &rodio::MixerDeviceSink, cry_path: &Path) {
+fn play_and_wait(
+    sink: &rodio::MixerDeviceSink,
+    cry_path: &Path,
+    player_slot: &Mutex<Option<rodio::Player>>,
+) {
     use std::fs::File;
     use std::io::BufReader;
 
@@ -239,8 +260,32 @@ fn play_and_wait(sink: &rodio::MixerDeviceSink, cry_path: &Path) {
     };
 
     // 拡張子は .ogg だが実体は MP3。Decoder は中身で判定するのでそのまま渡せる
-    if let Ok(player) = rodio::play(sink.mixer(), BufReader::new(file)) {
-        player.sleep_until_end();
+    let Ok(player) = rodio::play(sink.mixer(), BufReader::new(file)) else {
+        return;
+    };
+
+    // 呼び出し側が stop() できるよう、プレイヤーを共有スロットに預ける
+    if let Ok(mut slot) = player_slot.lock() {
+        *slot = Some(player);
+    } else {
+        return;
+    }
+
+    // player.sleep_until_end() ではなくポーリングで待つ。プレイヤーはスロットに
+    // 預けてしまっており、ロックを保持したまま待つと stop() 側が固まるため
+    loop {
+        let done = match player_slot.lock() {
+            Ok(slot) => match slot.as_ref() {
+                Some(player) => player.empty(),
+                // stop() で取り上げられた＝中断された
+                None => true,
+            },
+            Err(_) => true,
+        };
+        if done {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
 }
 
