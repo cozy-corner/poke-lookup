@@ -14,6 +14,7 @@
 - 📝 部分一致時はインタラクティブ選択（skim 使用）
 - ⌨️ インタラクティブ選択ではローマ字入力でも絞り込み可能
 - 🖼️ ターミナル内スプライト表示（オプション機能）
+- 🔊 鳴き声再生（オプション機能）
 - 🔄 月次自動データ更新（GitHub Actions）
 - 🔒 SHA256 によるデータ整合性チェック
 - 🌐 PokéAPI 準拠のデータ
@@ -54,6 +55,9 @@ cargo build --release
 
 # スプライト機能付き
 cargo build --release --features sprites
+
+# 鳴き声機能付き
+cargo build --release --features cries
 ```
 
 ### 開発環境のセットアップ
@@ -137,6 +141,28 @@ $ poke-lookup フシギ -s
 - その他の画像表示対応ターミナル
 
 **注意:** スプライト機能は `--features sprites` でビルドした場合のみ利用可能です。
+
+### 鳴き声再生（オプション機能）
+
+鳴き声機能付きでビルドした場合、選択したポケモンの鳴き声を再生できます：
+
+```bash
+# 英名を出力して鳴き声を再生
+$ poke-lookup ピカチュウ --play-cry
+Pikachu
+
+# 短縮オプション
+$ poke-lookup ピカチュウ -c
+Pikachu
+
+# インタラクティブ選択でも再生
+$ poke-lookup フシギ -c
+# 選択確定時に鳴き声が鳴ります
+```
+
+音声は [PokeAPI/cries](https://github.com/PokeAPI/cries) から取得し、初回のみダウンロードしてローカルにキャッシュします。再生は約1秒で、その間コマンドは終了を待ちます。音声デバイスが無い環境では黙ってスキップされるため、パイプライン中で使っても出力は変わりません。
+
+**注意:** 鳴き声機能は `--features cries` でビルドした場合のみ利用可能です（`cargo install --path . --features cries`）。Linux では ALSA の開発ヘッダ（`libasound2-dev`）が必要です。
 
 ### データ更新
 
