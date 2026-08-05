@@ -25,9 +25,13 @@ viuer = { version = "0.7", optional = true }
 image = { version = "0.24", optional = true }
 crossterm = { version = "0.27", optional = true }
 
+# Cry playback dependencies
+rodio = { version = "0.22", optional = true }
+
 [features]
 default = []
 sprites = ["viuer", "image", "crossterm"]
+cries = ["rodio"]
 
 [dev-dependencies]
 tempfile = "3.0"
