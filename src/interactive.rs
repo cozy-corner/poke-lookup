@@ -117,7 +117,15 @@ impl InteractiveSelector {
         #[cfg(feature = "cries")]
         {
             self.cry_service = if enabled {
-                CryService::new().ok()
+                // -c は明示的な要求なので、初期化に失敗したら理由を伝える。
+                // stdout はパイプライン連携のために汚さない
+                match CryService::new() {
+                    Ok(service) => Some(service),
+                    Err(e) => {
+                        eprintln!("鳴き声を初期化できませんでした: {:#}", e);
+                        None
+                    }
+                }
             } else {
                 None
             };
