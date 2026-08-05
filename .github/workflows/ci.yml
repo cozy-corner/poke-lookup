@@ -45,6 +45,10 @@ jobs:
           path: ~/.cargo/git
           key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Install ALSA dev headers
+        # cries feature の rodio が Linux では alsa に依存するため、--all-features に必要
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
       - name: Run clippy (default features)
         run: cargo clippy -- -D warnings
 
@@ -79,6 +83,10 @@ jobs:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Install ALSA dev headers
+        # cries feature の rodio が Linux では alsa に依存するため、--all-features に必要
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
       - name: Run tests (default features)
         run: cargo test --verbose
 
@@ -112,6 +120,10 @@ jobs:
         with:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install ALSA dev headers
+        # cries feature の rodio が Linux では alsa に依存するため、--all-features に必要
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
 
       - name: Build (default features)
         run: cargo build --release --verbose
