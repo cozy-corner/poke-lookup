@@ -317,6 +317,24 @@ mod tests {
     }
 
     #[test]
+    fn test_play_cry_runs_without_audio_device() {
+        let temp_dir = tempdir().unwrap();
+        let mut id_map = HashMap::new();
+        id_map.insert("Pikachu".to_string(), 25);
+
+        let service = CryService::for_test(temp_dir.path().to_path_buf(), id_map);
+        fs::write(service.get_cry_path(25), b"cached_audio").unwrap();
+
+        // sink が None でもスレッドは回り、wait() は返る
+        service.play_cry_for_pokemon("Pikachu");
+        service.wait();
+
+        // 2回目は stop() を経由する。ここで詰まらないこと
+        service.play_cry_for_pokemon("Pikachu");
+        service.wait();
+    }
+
+    #[test]
     fn test_download_skipped_when_cached() {
         let temp_dir = tempdir().unwrap();
         let cry_path = temp_dir.path().join("25.ogg");
