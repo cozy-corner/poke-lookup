@@ -1,3 +1,5 @@
+#[cfg(feature = "cries")]
+mod cry;
 mod data;
 mod interactive;
 mod models;
@@ -34,6 +36,10 @@ struct Cli {
     /// スプライト画像を表示
     #[arg(long = "show-sprite", short = 's', help = "スプライト画像を表示")]
     show_sprite: bool,
+
+    /// 鳴き声を再生
+    #[arg(long = "play-cry", short = 'c', help = "鳴き声を再生")]
+    play_cry: bool,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -89,10 +95,10 @@ fn run() -> Result<i32> {
         None => {
             // 検索機能
             if let Some(japanese_name) = cli.japanese_name {
-                search_pokemon(&japanese_name, cli.dict_path, cli.show_sprite)
+                search_pokemon(&japanese_name, cli.dict_path, cli.show_sprite, cli.play_cry)
             } else {
                 // 引数なしの場合、全候補からインタラクティブ選択
-                search_interactive_all(cli.dict_path, cli.show_sprite)
+                search_interactive_all(cli.dict_path, cli.show_sprite, cli.play_cry)
             }
         }
     }
@@ -102,6 +108,7 @@ fn search_pokemon(
     japanese_name: &str,
     dict_path: Option<PathBuf>,
     #[allow(unused_variables)] show_sprite: bool,
+    play_cry: bool,
 ) -> Result<i32> {
     // SearchServiceを初期化
     let search_service = if let Some(path) = dict_path {
@@ -111,7 +118,7 @@ fn search_pokemon(
     };
 
     // インタラクティブセレクターを作成
-    let selector = InteractiveSelector::new(search_service.clone());
+    let selector = InteractiveSelector::new(search_service.clone()).play_cry(play_cry);
 
     // 検索実行
     match selector.select_interactive(japanese_name)? {
@@ -140,6 +147,7 @@ fn search_pokemon(
 fn search_interactive_all(
     dict_path: Option<PathBuf>,
     #[allow(unused_variables)] show_sprite: bool,
+    play_cry: bool,
 ) -> Result<i32> {
     // SearchServiceを初期化
     let search_service = if let Some(path) = dict_path {
@@ -149,7 +157,7 @@ fn search_interactive_all(
     };
 
     // インタラクティブセレクターを作成
-    let selector = InteractiveSelector::new(search_service.clone());
+    let selector = InteractiveSelector::new(search_service.clone()).play_cry(play_cry);
 
     // 全候補から選択
     match selector.select_from_all()? {
