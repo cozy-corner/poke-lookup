@@ -129,7 +129,7 @@ impl InteractiveSelector {
     #[cfg(feature = "cries")]
     fn play_cry_if_enabled(&self, english_name: &str) {
         if let Some(ref cry_service) = self.cry_service {
-            let _ = cry_service.play_cry_for_pokemon(english_name);
+            cry_service.play_cry_for_pokemon(english_name);
         }
     }
 

@@ -137,9 +137,12 @@ impl CryService {
     /// ダウンロードもデバイスの準備待ちもスレッド側でやるので、呼び出し側は
     /// すぐ戻って英名の出力やスプライト描画に進める。
     /// 鳴り終わりはプロセス終了前に [`Self::wait`] で待つ。
-    pub fn play_cry_for_pokemon(&self, english_name: &str) -> Result<()> {
+    ///
+    /// 取得も再生も失敗しうるが、鳴らないだけで英名を出すという本来の目的には
+    /// 影響しないため、エラーは返さず握り潰す。
+    pub fn play_cry_for_pokemon(&self, english_name: &str) {
         let Some(pokemon_id) = self.get_pokemon_id(english_name) else {
-            return Ok(());
+            return;
         };
 
         // 前の鳴き声は止めてから次に移る。鳴り終わるまで待つと、ESC で選び直した
@@ -162,8 +165,6 @@ impl CryService {
                 play_and_wait(sink, &cry_path, &player_slot);
             });
         }));
-
-        Ok(())
     }
 
     /// 再生中の鳴き声を止めてスレッドの後始末をする
@@ -338,7 +339,7 @@ mod tests {
         let service = CryService::for_test(temp_dir.path().to_path_buf(), HashMap::new());
 
         // 辞書に無ければスレッドも立てずに戻る
-        assert!(service.play_cry_for_pokemon("Unknown").is_ok());
+        service.play_cry_for_pokemon("Unknown");
         service.wait();
     }
 
