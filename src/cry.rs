@@ -87,7 +87,7 @@ impl CryService {
         // 取得スレッドは終了前に join されるので、応答が返らないと CLI 自体が
         // 止まる。鳴き声は付加機能なので、待たせるくらいなら諦める
         let client = Client::builder()
-            .user_agent("poke-lookup/0.1.0")
+            .user_agent(concat!("poke-lookup/", env!("CARGO_PKG_VERSION")))
             .timeout(CRY_FETCH_TIMEOUT)
             .build()
             .context("Failed to create HTTP client")?;
