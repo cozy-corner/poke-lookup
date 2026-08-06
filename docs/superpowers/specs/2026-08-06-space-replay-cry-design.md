@@ -42,11 +42,7 @@ KeyCode::Char(' ') => self.play_cry_if_enabled(english_name),
 
 ### ヒント行
 
-現在の `[Enter] 確定  [ESC] 再選択` に `[Space] もう一度鳴らす` を足す。ただし
-`cry_service` が `Some` のときだけ。`-c` なしで鳴らないキーを案内しない。
-
-文字列の組み立ては小さい関数に切り出し、そこだけをテストする。キーループ本体は
-`crossterm::event::read()` に直結していて自動テストできない（既存コードも同様）。
+`[Enter] 確定  [ESC] 再選択` のままにする。Space は隠しキーとして置く。
 
 ### 既存の仕組みに乗る点
 
@@ -59,14 +55,13 @@ KeyCode::Char(' ') => self.play_cry_if_enabled(english_name),
 
 ## テスト
 
-- ヒント文字列の組み立て関数: `cry_service` の有無で Space の案内が出る／出ないこと。
-- 手動確認: `cargo run --features sprites,cries -- フシギ -s -c` で候補を選び、
+キーループは `crossterm::event::read()` に直結していて自動テストできない
+（既存の Enter / ESC も同様に未テスト）。手動確認で担保する。
+
+- `cargo run --features sprites,cries -- フシギ -s -c` で候補を選び、
   スプライト画面で Space を数回押して鳴ること、連打で音が重ならないこと、
   Enter / ESC が従来どおり動くことを確認する。
 
 ## ドキュメント
 
-README の以下を更新する。
-
-- 鳴き声再生の節 (145-167行): スプライト画面で Space により再生し直せること
-- トラブルシューティングの操作方法 (233-239行): Space の追記
+README は更新しない。Space は案内しない隠しキーとする。
