@@ -258,7 +258,7 @@ impl InteractiveSelector {
         Ok(None)
     }
 
-    /// スプライトを表示して、ESC/ENTERでナビゲーション
+    /// スプライトを表示して、ESC/ENTER/SPACEでナビゲーション
     #[cfg(feature = "sprites")]
     fn show_sprite_with_navigation(
         &self,
@@ -290,6 +290,10 @@ impl InteractiveSelector {
                         println!("\n🔄 再選択します...");
                         break None;
                     }
+                    // 画面はそのままに鳴らし直す。play_cry_for_pokemon が
+                    // 前の再生を止めるので、連打しても音は重ならない
+                    #[cfg(feature = "cries")]
+                    KeyCode::Char(' ') => self.play_cry_if_enabled(english_name),
                     _ => {}
                 }
             }
