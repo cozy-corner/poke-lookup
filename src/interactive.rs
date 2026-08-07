@@ -6,7 +6,7 @@ use crate::sprite::SpriteService;
 use anyhow::{Context, Result};
 #[cfg(feature = "sprites")]
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEvent},
+    event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
     terminal::{disable_raw_mode, enable_raw_mode},
 };
 use skim::prelude::*;
@@ -279,7 +279,14 @@ impl InteractiveSelector {
         enable_raw_mode()?;
 
         let result = loop {
-            if let Event::Key(KeyEvent { code, .. }) = event::read()? {
+            // Press のみを扱う。Repeat / Release にマッチすると
+            // 押しっぱなしや離した際に鳴らし直し・確定が誤発火する（issue #18）
+            if let Event::Key(KeyEvent {
+                code,
+                kind: KeyEventKind::Press,
+                ..
+            }) = event::read()?
+            {
                 match code {
                     KeyCode::Enter => {
                         disable_raw_mode()?;
