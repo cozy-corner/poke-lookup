@@ -499,4 +499,41 @@ mod tests {
         assert_eq!(info.stats[2].value, 90);
         mock.assert();
     }
+
+    #[test]
+    fn test_fetch_description_prefers_ja_then_ja_hrkt() {
+        use httpmock::prelude::*;
+
+        let server = MockServer::start();
+        // species URL は id 抽出にのみ使う。取得先は base_url + /pokemon-species/25
+        let species_url = server.url("/pokemon-species/25");
+        server.mock(|when, then| {
+            when.method(GET).path("/pokemon/25");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(format!(
+                    r#"{{"types":[],"stats":[],"species":{{"url":"{}"}}}}"#,
+                    species_url
+                ));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/pokemon-species/25");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(
+                    r#"{"flavor_text_entries":[
+                        {"flavor_text":"かな\nテキスト","language":{"name":"ja-Hrkt"}},
+                        {"flavor_text":"漢字\nテキスト","language":{"name":"ja"}}
+                    ]}"#,
+                );
+        });
+
+        let mut id_map = HashMap::new();
+        id_map.insert("Pikachu".to_string(), 25);
+        let service = PokemonInfoService::for_test(server.url(""), id_map);
+
+        // ja を優先し、clean_flavor で改行が詰められている
+        let info = service.fetch("Pikachu").expect("should fetch");
+        assert_eq!(info.description.as_deref(), Some("漢字テキスト"));
+    }
 }
