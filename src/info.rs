@@ -355,7 +355,8 @@ fn format_stats(stats: &[StatEntry]) -> String {
 /// `ラベル 値 ████░░░░` 形式の1行を作る。label は表示幅8桁に揃え済み
 #[cfg(feature = "sprites")]
 fn format_stat_gauge(label: &str, value: u16) -> String {
-    let filled = (value.min(STAT_MAX) as usize * GAUGE_WIDTH / STAT_MAX as usize).min(GAUGE_WIDTH);
+    // value を STAT_MAX でクランプ済みなので結果は必ず GAUGE_WIDTH 以下
+    let filled = value.min(STAT_MAX) as usize * GAUGE_WIDTH / STAT_MAX as usize;
     format!(
         "{}{:>3} {}{}{}{}{}",
         label,
