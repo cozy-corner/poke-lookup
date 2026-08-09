@@ -1,6 +1,8 @@
 #[cfg(feature = "cries")]
 mod cry;
 mod data;
+#[cfg(feature = "sprites")]
+mod info;
 mod interactive;
 mod models;
 mod romaji;
