@@ -87,6 +87,12 @@ fn clean_flavor(text: &str) -> String {
     text.replace(['\n', '\r', '\u{c}'], "")
 }
 
+/// `.../pokemon-species/25/` 形式の末尾から species ID を取り出す
+#[cfg(feature = "sprites")]
+fn id_from_url(url: &str) -> Option<u32> {
+    url.trim_end_matches('/').rsplit('/').next()?.parse().ok()
+}
+
 #[cfg(feature = "sprites")]
 #[derive(Debug, Deserialize)]
 struct TypeSlot {
@@ -234,10 +240,14 @@ impl PokemonInfoService {
             })
             .collect();
 
+        // フォルムは form id から species を辿れない（/pokemon-species/{form_id} は
+        // 404）。応答の species URL から species id を取り出し、リクエスト自体は
+        // base_url に根ざして組み立てる（テスト可能・リモートURL追従を避ける）
         let description = body
             .species
             .as_ref()
-            .and_then(|sp| self.fetch_description(&sp.url));
+            .and_then(|sp| id_from_url(&sp.url))
+            .and_then(|species_id| self.fetch_description(species_id));
 
         Some(PokemonInfo {
             types,
@@ -246,9 +256,10 @@ impl PokemonInfoService {
         })
     }
 
-    /// species URL から日本語の図鑑説明文を1件取得。失敗時は None
-    fn fetch_description(&self, species_url: &str) -> Option<String> {
-        let response = self.client.get(species_url).send().ok()?;
+    /// species ID から日本語の図鑑説明文を1件取得。失敗時は None
+    fn fetch_description(&self, species_id: u32) -> Option<String> {
+        let url = format!("{}/pokemon-species/{}", self.base_url, species_id);
+        let response = self.client.get(&url).send().ok()?;
         if !response.status().is_success() {
             return None;
         }
