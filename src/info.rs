@@ -289,12 +289,17 @@ const GAUGE_EMPTY: &str = "\x1b[38;5;58m";
 #[cfg(feature = "sprites")]
 const SGR_RESET: &str = "\x1b[0m";
 
-/// 図鑑番号・名前の見出し行。ローカル辞書だけで出せるので通信可否に依らない
+/// 名前（と取れれば図鑑番号）の見出し行。名前は必ず出す。
+/// info サービス初期化失敗などで id が無くても、選択したポケモンが分かるように
 #[cfg(feature = "sprites")]
-pub fn format_header(id: u32, japanese: Option<&str>, english: &str) -> String {
-    match japanese {
-        Some(ja) => format!("\nNo.{}  {} ({})\n", id, ja, english),
-        None => format!("\nNo.{}  {}\n", id, english),
+pub fn format_header(id: Option<u32>, japanese: Option<&str>, english: &str) -> String {
+    let name = match japanese {
+        Some(ja) => format!("{} ({})", ja, english),
+        None => english.to_string(),
+    };
+    match id {
+        Some(id) => format!("\nNo.{}  {}\n", id, name),
+        None => format!("\n{}\n", name),
     }
 }
 
@@ -380,10 +385,22 @@ mod tests {
     #[test]
     fn test_format_header_with_and_without_ja() {
         assert_eq!(
-            format_header(6, Some("リザードン"), "Charizard"),
+            format_header(Some(6), Some("リザードン"), "Charizard"),
             "\nNo.6  リザードン (Charizard)\n"
         );
-        assert_eq!(format_header(6, None, "Charizard"), "\nNo.6  Charizard\n");
+        assert_eq!(
+            format_header(Some(6), None, "Charizard"),
+            "\nNo.6  Charizard\n"
+        );
+    }
+
+    #[test]
+    fn test_format_header_without_id_still_shows_name() {
+        assert_eq!(
+            format_header(None, Some("リザードン"), "Charizard"),
+            "\nリザードン (Charizard)\n"
+        );
+        assert_eq!(format_header(None, None, "Charizard"), "\nCharizard\n");
     }
 
     #[test]

@@ -284,16 +284,17 @@ impl InteractiveSelector {
             .find(|(_, en)| *en == english_name)
             .map(|(ja, _)| *ja);
 
-        // 画像の下に情報を表示。整形は info モジュールに委ね、ここは印字するだけ
-        if let Some(ref info_service) = self.info_service {
-            // 図鑑番号・名前はローカル辞書だけで出せるので通信可否に関わらず表示
-            if let Some(id) = info_service.get_pokemon_id(english_name) {
-                print!("{}", crate::info::format_header(id, japanese, english_name));
-                // タイプ・種族値・説明は取得成功時のみ
-                if let Some(info) = info_service.fetch(english_name) {
-                    print!("{}", crate::info::format_body(&info));
-                }
-            }
+        // 画像の下に情報を表示。整形は info モジュールに委ね、ここは印字するだけ。
+        // 名前は必ず出す（番号は取れたときだけ添える）。タイプ・種族値・説明は取得成功時のみ
+        let id = self
+            .info_service
+            .as_ref()
+            .and_then(|s| s.get_pokemon_id(english_name));
+        print!("{}", crate::info::format_header(id, japanese, english_name));
+        if let Some(ref info_service) = self.info_service
+            && let Some(info) = info_service.fetch(english_name)
+        {
+            print!("{}", crate::info::format_body(&info));
         }
 
         // ナビゲーション指示を表示（名前は上の見出しで出しているので省く）
