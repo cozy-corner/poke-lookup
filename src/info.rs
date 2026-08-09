@@ -253,10 +253,17 @@ impl PokemonInfoService {
             return None;
         }
         let species = response.json::<SpeciesResponse>().ok()?;
+        // 漢字かな交じり(ja)を優先。無ければ かな(ja-Hrkt) にフォールバック
         let entry = species
             .flavor_text_entries
             .iter()
-            .find(|e| e.language.name == "ja")?;
+            .find(|e| e.language.name == "ja")
+            .or_else(|| {
+                species
+                    .flavor_text_entries
+                    .iter()
+                    .find(|e| e.language.name == "ja-Hrkt")
+            })?;
         Some(clean_flavor(&entry.flavor_text))
     }
 
