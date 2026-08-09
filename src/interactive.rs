@@ -1,5 +1,7 @@
 #[cfg(feature = "cries")]
 use crate::cry::CryService;
+#[cfg(feature = "sprites")]
+use crate::info::PokemonInfoService;
 use crate::search::SearchService;
 #[cfg(feature = "sprites")]
 use crate::sprite::SpriteService;
@@ -91,6 +93,8 @@ pub struct InteractiveSelector {
     search_service: SearchService,
     #[cfg(feature = "sprites")]
     sprite_service: Option<SpriteService>,
+    #[cfg(feature = "sprites")]
+    info_service: Option<PokemonInfoService>,
     #[cfg(feature = "cries")]
     cry_service: Option<CryService>,
 }
@@ -100,11 +104,15 @@ impl InteractiveSelector {
     pub fn new(search_service: SearchService) -> Self {
         #[cfg(feature = "sprites")]
         let sprite_service = SpriteService::new().ok();
+        #[cfg(feature = "sprites")]
+        let info_service = PokemonInfoService::new().ok();
 
         Self {
             search_service,
             #[cfg(feature = "sprites")]
             sprite_service,
+            #[cfg(feature = "sprites")]
+            info_service,
             #[cfg(feature = "cries")]
             cry_service: None,
         }
@@ -264,15 +272,33 @@ impl InteractiveSelector {
         &self,
         english_name: &str,
         sprite_service: &SpriteService,
-        _candidates: &[(&str, &str)],
+        candidates: &[(&str, &str)],
         _initial_query: &str,
     ) -> Result<Option<String>> {
         // スプライトを表示
         sprite_service.display_sprite_for_pokemon(english_name)?;
 
-        // ナビゲーション指示を表示
-        println!("\n📌 {} が選択されました", english_name);
-        println!("   [Enter] 確定  [ESC] 再選択");
+        // 日本語名は候補（ja, en）から英名一致で引く
+        let japanese = candidates
+            .iter()
+            .find(|(_, en)| *en == english_name)
+            .map(|(ja, _)| *ja);
+
+        // 画像の下に情報を表示。整形は info モジュールに委ね、ここは印字するだけ。
+        // 名前は必ず出す（番号は取れたときだけ添える）。タイプ・種族値・説明は取得成功時のみ
+        let id = self
+            .info_service
+            .as_ref()
+            .and_then(|s| s.get_pokemon_id(english_name));
+        print!("{}", crate::info::format_header(id, japanese, english_name));
+        if let Some(ref info_service) = self.info_service
+            && let Some(info) = info_service.fetch(english_name)
+        {
+            print!("{}", crate::info::format_body(&info));
+        }
+
+        // ナビゲーション指示を表示（名前は上の見出しで出しているので省く）
+        println!("\n   [Enter] 確定  [ESC] 再選択");
         io::stdout().flush()?;
 
         // raw modeを有効化してキー入力を待つ
