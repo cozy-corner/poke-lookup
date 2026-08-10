@@ -29,7 +29,7 @@ crossterm = { version = "0.27", optional = true }
 rodio = { version = "0.22", optional = true }
 
 [features]
-default = []
+default = ["sprites", "cries"]
 sprites = ["viuer", "image", "crossterm"]
 cries = ["rodio"]
 
