@@ -120,7 +120,9 @@ fn search_pokemon(
     };
 
     // インタラクティブセレクターを作成
-    let selector = InteractiveSelector::new(search_service.clone()).play_cry(play_cry);
+    let selector = InteractiveSelector::new(search_service.clone())
+        .show_sprite(show_sprite)
+        .play_cry(play_cry);
 
     // 検索実行
     match selector.select_interactive(japanese_name)? {
@@ -162,7 +164,9 @@ fn search_interactive_all(
     };
 
     // インタラクティブセレクターを作成
-    let selector = InteractiveSelector::new(search_service.clone()).play_cry(play_cry);
+    let selector = InteractiveSelector::new(search_service.clone())
+        .show_sprite(show_sprite)
+        .play_cry(play_cry);
 
     // 全候補から選択
     match selector.select_from_all()? {
