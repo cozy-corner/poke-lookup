@@ -104,8 +104,6 @@ impl InteractiveSelector {
     pub fn new(search_service: SearchService) -> Self {
         Self {
             search_service,
-            // スプライト表示は show_sprite(true)（= -s）で初めて有効化する。
-            // cry_service と対称にし、フラグなしでは対話選択中も画像を出さない（issue #20）
             #[cfg(feature = "sprites")]
             sprite_service: None,
             #[cfg(feature = "sprites")]
@@ -115,8 +113,7 @@ impl InteractiveSelector {
         }
     }
 
-    /// 有効時のみ SpriteService / PokemonInfoService を初期化する。
-    /// info は対話選択中のスプライト表示でしか使わないため一緒にゲートする
+    /// info は対話選択中のスプライト表示でしか使わないため sprite と同時にゲートする
     #[cfg_attr(not(feature = "sprites"), allow(unused_mut, unused_variables))]
     pub fn show_sprite(mut self, enabled: bool) -> Self {
         #[cfg(feature = "sprites")]
