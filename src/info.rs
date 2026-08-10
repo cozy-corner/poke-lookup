@@ -343,7 +343,7 @@ fn format_types(types: &[PokemonType]) -> String {
         .iter()
         .map(|t| format!("{} {} {}", t.color, t.ja, SGR_RESET))
         .collect();
-    format!("\nタイプ: {}\n", chips.join(" "))
+    format!("\n{}\n", chips.join(" "))
 }
 
 /// 種族値ゲージ（各行）と合計。空なら空文字
