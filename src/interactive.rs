@@ -102,20 +102,31 @@ pub struct InteractiveSelector {
 impl InteractiveSelector {
     /// 検索サービスからセレクターを作成
     pub fn new(search_service: SearchService) -> Self {
-        #[cfg(feature = "sprites")]
-        let sprite_service = SpriteService::new().ok();
-        #[cfg(feature = "sprites")]
-        let info_service = PokemonInfoService::new().ok();
-
         Self {
             search_service,
+            // スプライト表示は show_sprite(true)（= -s）で初めて有効化する。
+            // cry_service と対称にし、フラグなしでは対話選択中も画像を出さない（issue #20）
             #[cfg(feature = "sprites")]
-            sprite_service,
+            sprite_service: None,
             #[cfg(feature = "sprites")]
-            info_service,
+            info_service: None,
             #[cfg(feature = "cries")]
             cry_service: None,
         }
+    }
+
+    /// 有効時のみ SpriteService / PokemonInfoService を初期化する。
+    /// info は対話選択中のスプライト表示でしか使わないため一緒にゲートする
+    #[cfg_attr(not(feature = "sprites"), allow(unused_mut, unused_variables))]
+    pub fn show_sprite(mut self, enabled: bool) -> Self {
+        #[cfg(feature = "sprites")]
+        if enabled {
+            // 初期化失敗（画像表示不可の端末など）は None のまま握りつぶす。
+            // -s でも表示できないだけで、選択自体は続行させる
+            self.sprite_service = SpriteService::new().ok();
+            self.info_service = PokemonInfoService::new().ok();
+        }
+        self
     }
 
     /// 有効時のみ CryService を初期化する（辞書の再読み込みを避けるため）
