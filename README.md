@@ -26,6 +26,7 @@
 - Rust 1.70以上
 - Git（クローン用）
 - インターネット接続（初回セットアップ時のデータダウンロード用）
+- Linux の場合のみ、鳴き声機能が依存する ALSA の開発ヘッダ（`libasound2-dev`）
 
 ### インストール手順
 
@@ -35,29 +36,28 @@ cd poke-lookup
 cargo install --path .
 ```
 
-これにより `poke-lookup` コマンドがどこからでも実行可能になります。
-
-### スプライト機能付きインストール
-
-ターミナル内でポケモンのスプライト画像を表示したい場合：
-
-```bash
-cargo install --path . --features sprites
-```
+これにより `poke-lookup` コマンドがどこからでも実行可能になります。スプライト表示と鳴き声再生はデフォルトで有効なので、追加の指定は不要です。
 
 https://github.com/user-attachments/assets/7f80ef19-2117-4c19-b8a8-96bdf55d6ee3
+
+### 最小構成でのインストール
+
+スプライトと鳴き声を無効にし、依存を減らした最小構成でビルドしたい場合：
+
+```bash
+cargo install --path . --no-default-features
+```
+
+個別に有効化したい場合は `--features sprites` / `--features cries` を組み合わせてください。
 
 ### 手動ビルド（開発用）
 
 ```bash
-# 基本機能のみ
+# 全機能付き（デフォルト）
 cargo build --release
 
-# スプライト機能付き
-cargo build --release --features sprites
-
-# 鳴き声機能付き
-cargo build --release --features cries
+# 最小構成（スプライト・鳴き声なし）
+cargo build --release --no-default-features
 ```
 
 ### 開発環境のセットアップ
@@ -114,9 +114,9 @@ $ poke-lookup
 
 なお**引数に渡すローマ字は対象外**です。`poke-lookup fushigidane` は候補なしになります。ローマ字を使う場合は引数なしで起動してください。
 
-### スプライト表示（オプション機能）
+### スプライト表示
 
-スプライト機能付きでビルドした場合、ポケモンの画像をターミナル内に表示できます：
+ポケモンの画像をターミナル内に表示できます：
 
 ```bash
 # 英名と一緒にスプライトを表示
@@ -140,11 +140,11 @@ $ poke-lookup フシギ -s
 - WezTerm
 - その他の画像表示対応ターミナル
 
-**注意:** スプライト機能は `--features sprites` でビルドした場合のみ利用可能です。
+**注意:** スプライト機能はデフォルトで有効です。最小構成（`--no-default-features`）でビルドした場合のみ無効になります。
 
-### 鳴き声再生（オプション機能）
+### 鳴き声再生
 
-鳴き声機能付きでビルドした場合、選択したポケモンの鳴き声を再生できます：
+選択したポケモンの鳴き声を再生できます：
 
 ```bash
 # 英名を出力して鳴き声を再生
@@ -164,7 +164,7 @@ $ poke-lookup フシギ -c
 
 取得は3秒でタイムアウトし、音声デバイスが無い環境と同じく黙ってスキップされます。いずれの場合も標準出力は変わらないので、パイプライン中で使っても影響ありません。
 
-**注意:** 鳴き声機能は `--features cries` でビルドした場合のみ利用可能です（`cargo install --path . --features cries`）。Linux では ALSA の開発ヘッダ（`libasound2-dev`）が必要です。
+**注意:** 鳴き声機能はデフォルトで有効です。最小構成（`--no-default-features`）でビルドした場合のみ無効になります。Linux では ALSA の開発ヘッダ（`libasound2-dev`）が必要です。
 
 ### データ更新
 
@@ -255,10 +255,10 @@ poke-lookup update
    poke-lookup update
    ```
 
-4. **フィーチャー無効でビルドした場合**
+4. **最小構成でビルドした場合**
    ```bash
-   # スプライト機能付きで再ビルド
-   cargo install --path . --features sprites --force
+   # デフォルト（全機能付き）で再ビルド
+   cargo install --path . --force
    ```
 
 ## 開発
@@ -266,11 +266,11 @@ poke-lookup update
 ### テスト実行
 
 ```bash
-# 基本機能のテスト
+# 全機能のテスト（デフォルト）
 cargo test
 
-# 全機能のテスト（スプライト機能含む）
-cargo test --all-features
+# 最小構成のテスト
+cargo test --no-default-features
 ```
 
 ### データ取得スクリプト（CI/CD 用）
