@@ -363,14 +363,15 @@ fn format_stats(stats: &[StatEntry]) -> String {
     out
 }
 
-/// `ラベル 値 ████░░░░` 形式の1行を作る。label は表示幅8桁に揃え済み
+/// `ラベル  値 ████░░░░` 形式の1行を作る。label は表示幅8桁に揃え済みで、
+/// 値との間には固定スペースを2つ入れる（3桁の値でもラベルと密着させないため）
 #[cfg(feature = "sprites")]
 fn format_stat_gauge(label: &str, value: u16) -> String {
     // ここで STAT_MAX にクランプするため filled は必ず GAUGE_WIDTH 以下。
     // この .min(STAT_MAX) を外すと下の GAUGE_WIDTH - filled がアンダーフローする
     let filled = value.min(STAT_MAX) as usize * GAUGE_WIDTH / STAT_MAX as usize;
     format!(
-        "{}{:>3} {}{}{}{}{}",
+        "{}  {:>3} {}{}{}{}{}",
         label,
         value,
         GAUGE_FILL,
@@ -396,9 +397,9 @@ mod tests {
                 .replace(SGR_RESET, "")
         };
         // 0 は空、上限(150)以上は満杯、中間は比例（35/150*20 = 4 マス）
-        assert_eq!(bare("HP      ", 0), "HP        0 ░░░░░░░░░░░░░░░░░░░░");
-        assert_eq!(bare("すばやさ", 255), "すばやさ255 ████████████████████");
-        assert_eq!(bare("HP      ", 35), "HP       35 ████░░░░░░░░░░░░░░░░");
+        assert_eq!(bare("HP      ", 0), "HP          0 ░░░░░░░░░░░░░░░░░░░░");
+        assert_eq!(bare("すばやさ", 255), "すばやさ  255 ████████████████████");
+        assert_eq!(bare("HP      ", 35), "HP         35 ████░░░░░░░░░░░░░░░░");
         assert!(format_stat_gauge("HP      ", 35).contains(GAUGE_FILL));
     }
 
