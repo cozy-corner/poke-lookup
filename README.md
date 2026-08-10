@@ -13,8 +13,8 @@
 - 🎯 完全一致で即座に結果を返す
 - 📝 部分一致時はインタラクティブ選択（skim 使用）
 - ⌨️ インタラクティブ選択ではローマ字入力でも絞り込み可能
-- 🖼️ ターミナル内スプライト表示（オプション機能）
-- 🔊 鳴き声再生（オプション機能）
+- 🖼️ ターミナル内スプライト表示（デフォルトで有効）
+- 🔊 鳴き声再生（デフォルトで有効）
 - 🔄 月次自動データ更新（GitHub Actions）
 - 🔒 SHA256 によるデータ整合性チェック
 - 🌐 PokéAPI 準拠のデータ
@@ -48,7 +48,7 @@ https://github.com/user-attachments/assets/7f80ef19-2117-4c19-b8a8-96bdf55d6ee3
 cargo install --path . --no-default-features
 ```
 
-個別に有効化したい場合は `--features sprites` / `--features cries` を組み合わせてください。
+どちらか一方だけにしたい場合は `--no-default-features --features sprites` / `--no-default-features --features cries` を指定してください。
 
 ### 手動ビルド（開発用）
 
