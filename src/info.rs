@@ -359,7 +359,7 @@ fn format_stats(stats: &[StatEntry]) -> String {
         out.push_str(&format_stat_gauge(stat.label, stat.value));
         out.push('\n');
     }
-    out.push_str(&format!("合計    {}\n", total));
+    out.push_str(&format!("ごうけい  {:>3}\n", total));
     out
 }
 
