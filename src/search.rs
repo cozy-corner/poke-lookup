@@ -43,20 +43,36 @@ impl SearchService {
     }
 
     /// 日本語名から skim 用のタイプトークン列を作る。
-    /// 各 slug を「日本語名 slug」に展開して空白区切りで並べる（例: "ほのお fire"）。
+    /// 各 slug を「日本語名 slug」に展開して半角空白区切りで並べる（例: "ほのお fire"）。
     /// 未知 slug は slug のみ。types が無ければ空文字。
+    ///
+    /// タイプが2つとも既知なら、日本語名を全角スペースで繋いだ組トークンを両順序で足す。
+    /// skim は AND 区切りを半角スペースしか見ない（skim factory.rs の RE_AND）ため、
+    /// 全角スペースで2タイプ指定しても引けるよう、haystack 側に仕込む。
     pub fn type_tokens(&self, japanese_name: &str) -> String {
         self.type_map
             .get(japanese_name)
             .map(|slugs| {
-                slugs
+                let mut tokens: Vec<String> = slugs
                     .iter()
                     .map(|slug| match crate::pokemon_type::type_ja(slug) {
                         Some(ja) => format!("{} {}", ja, slug),
                         None => slug.clone(),
                     })
-                    .collect::<Vec<_>>()
-                    .join(" ")
+                    .collect();
+
+                // タイプが2つとも既知なら、日本語名を全角スペースで繋いだ組トークンを
+                // 両順序で足す
+                let ja_names: Vec<&str> = slugs
+                    .iter()
+                    .filter_map(|slug| crate::pokemon_type::type_ja(slug))
+                    .collect();
+                if ja_names.len() == 2 {
+                    tokens.push(format!("{}　{}", ja_names[0], ja_names[1]));
+                    tokens.push(format!("{}　{}", ja_names[1], ja_names[0]));
+                }
+
+                tokens.join(" ")
             })
             .unwrap_or_default()
     }
@@ -143,12 +159,41 @@ mod tests {
         );
         let service = SearchService::from_maps(name_map, type_map);
 
+        // 個別トークンに続けて、全角スペースで繋いだタイプ2つの組を両順序で持つ
         assert_eq!(
             service.type_tokens("リザードン"),
-            "ほのお fire ひこう flying"
+            "ほのお fire ひこう flying ほのお　ひこう ひこう　ほのお"
         );
         // types 無し・未登録は空文字
         assert_eq!(service.type_tokens("ピカチュウ"), "");
+    }
+
+    #[test]
+    fn test_type_tokens_fullwidth_pair_both_orders() {
+        let mut type_map = HashMap::new();
+        type_map.insert(
+            "リザードン".to_string(),
+            vec!["fire".to_string(), "flying".to_string()],
+        );
+        let service = SearchService::from_maps(HashMap::new(), type_map);
+
+        let tokens = service.type_tokens("リザードン");
+        // 全角スペース区切りは skim では AND にならないので、
+        // haystack 側に両順序の組トークンを仕込んで引けるようにする
+        assert!(tokens.contains("ほのお　ひこう"));
+        assert!(tokens.contains("ひこう　ほのお"));
+    }
+
+    #[test]
+    fn test_type_tokens_single_type_has_no_fullwidth_pair() {
+        let mut type_map = HashMap::new();
+        type_map.insert("ヒトカゲ".to_string(), vec!["fire".to_string()]);
+        let service = SearchService::from_maps(HashMap::new(), type_map);
+
+        let tokens = service.type_tokens("ヒトカゲ");
+        assert_eq!(tokens, "ほのお fire");
+        // 単タイプは全角スペースの組トークンを持たない
+        assert!(!tokens.contains('　'));
     }
 
     #[test]
