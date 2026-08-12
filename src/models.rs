@@ -48,12 +48,17 @@ impl NameDictionary {
     }
 
     /// スキーマバージョンの検証
+    ///
+    /// v1（types 無し）と v2（types あり）の両方を受理する。types は
+    /// `#[serde(default)]` で空になるため、v1 データでも名前検索は動く。
+    /// これにより、配布リリースが v1 のまま新バイナリを使っても壊れない。
     pub fn validate_schema(&self) -> Result<(), String> {
-        const EXPECTED_VERSION: u32 = 2;
-        if self.schema_version != EXPECTED_VERSION {
+        const MIN_SCHEMA_VERSION: u32 = 1;
+        const MAX_SCHEMA_VERSION: u32 = 2;
+        if !(MIN_SCHEMA_VERSION..=MAX_SCHEMA_VERSION).contains(&self.schema_version) {
             return Err(format!(
-                "Schema version mismatch: expected {}, got {}",
-                EXPECTED_VERSION, self.schema_version
+                "Unsupported schema version: {} (supported: {}..={})",
+                self.schema_version, MIN_SCHEMA_VERSION, MAX_SCHEMA_VERSION
             ));
         }
         Ok(())
@@ -207,9 +212,20 @@ mod tests {
             entries: vec![],
         };
 
+        // v2（types 付き）は当然 OK
         assert!(dict.validate_schema().is_ok());
 
+        // v1（types 無しの旧データ）も受理する。配布リリースが v1 のままでも
+        // 名前検索は動かせるようにするため（types は空になるだけ）
+        dict.schema_version = 1;
+        assert!(dict.validate_schema().is_ok());
+
+        // 未知の新バージョンは拒否
         dict.schema_version = 3;
+        assert!(dict.validate_schema().is_err());
+
+        // 0 も拒否
+        dict.schema_version = 0;
         assert!(dict.validate_schema().is_err());
     }
 
