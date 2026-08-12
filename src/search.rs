@@ -8,7 +8,6 @@ pub struct SearchService {
     /// 検索用HashMap（日本語名 -> 英名）
     name_map: HashMap<String, String>,
     /// 日本語名 -> タイプの英語スラッグ配列（タイプトークン生成用）
-    #[allow(dead_code)] // 検索コマンドへの統合で使用予定
     type_map: HashMap<String, Vec<String>>,
 }
 
