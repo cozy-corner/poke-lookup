@@ -25,6 +25,9 @@ pub struct NameEntry {
     /// ポケモンID（スプライト表示用）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<u32>,
+    /// タイプの英語スラッグ（slot 昇順）。旧データには無いので default で空
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub types: Vec<String>,
 }
 
 impl NameDictionary {
@@ -38,7 +41,7 @@ impl NameDictionary {
 
     /// スキーマバージョンの検証
     pub fn validate_schema(&self) -> Result<(), String> {
-        const EXPECTED_VERSION: u32 = 1;
+        const EXPECTED_VERSION: u32 = 2;
         if self.schema_version != EXPECTED_VERSION {
             return Err(format!(
                 "Schema version mismatch: expected {}, got {}",
@@ -104,7 +107,7 @@ mod tests {
     #[test]
     fn test_deserialize_name_dictionary() {
         let json = r#"{
-            "schema_version": 1,
+            "schema_version": 2,
             "generated_at": "2025-01-01T00:00:00Z",
             "count": 2,
             "entries": [
@@ -114,7 +117,7 @@ mod tests {
         }"#;
 
         let dict: NameDictionary = serde_json::from_str(json).unwrap();
-        assert_eq!(dict.schema_version, 1);
+        assert_eq!(dict.schema_version, 2);
         assert_eq!(dict.count, 2);
         assert_eq!(dict.entries.len(), 2);
         assert_eq!(dict.entries[0].ja, "ピカチュウ");
@@ -122,9 +125,27 @@ mod tests {
     }
 
     #[test]
+    fn test_deserialize_types() {
+        let json = r#"{
+            "schema_version": 2,
+            "generated_at": "2025-01-01T00:00:00Z",
+            "count": 2,
+            "entries": [
+                {"ja": "リザードン", "en": "Charizard", "id": 6, "types": ["fire", "flying"]},
+                {"ja": "ピカチュウ", "en": "Pikachu"}
+            ]
+        }"#;
+
+        let dict: NameDictionary = serde_json::from_str(json).unwrap();
+        assert_eq!(dict.entries[0].types, vec!["fire", "flying"]);
+        // types キーが無い旧形式のエントリは空ベクタになる（#[serde(default)]）
+        assert!(dict.entries[1].types.is_empty());
+    }
+
+    #[test]
     fn test_to_hashmap() {
         let dict = NameDictionary {
-            schema_version: 1,
+            schema_version: 2,
             generated_at: Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap(),
             count: 2,
             entries: vec![
@@ -132,11 +153,13 @@ mod tests {
                     ja: "ピカチュウ".to_string(),
                     en: "Pikachu".to_string(),
                     id: None,
+                    types: vec![],
                 },
                 NameEntry {
                     ja: "フシギダネ".to_string(),
                     en: "Bulbasaur".to_string(),
                     id: None,
+                    types: vec![],
                 },
             ],
         };
@@ -149,7 +172,7 @@ mod tests {
     #[test]
     fn test_validate_schema() {
         let mut dict = NameDictionary {
-            schema_version: 1,
+            schema_version: 2,
             generated_at: Utc::now(),
             count: 0,
             entries: vec![],
@@ -157,14 +180,14 @@ mod tests {
 
         assert!(dict.validate_schema().is_ok());
 
-        dict.schema_version = 2;
+        dict.schema_version = 3;
         assert!(dict.validate_schema().is_err());
     }
 
     #[test]
     fn test_validate_count() {
         let dict = NameDictionary {
-            schema_version: 1,
+            schema_version: 2,
             generated_at: Utc::now(),
             count: 2,
             entries: vec![
@@ -172,11 +195,13 @@ mod tests {
                     ja: "ピカチュウ".to_string(),
                     en: "Pikachu".to_string(),
                     id: None,
+                    types: vec![],
                 },
                 NameEntry {
                     ja: "フシギダネ".to_string(),
                     en: "Bulbasaur".to_string(),
                     id: None,
+                    types: vec![],
                 },
             ],
         };
@@ -184,13 +209,14 @@ mod tests {
         assert!(dict.validate_count().is_ok());
 
         let dict_invalid = NameDictionary {
-            schema_version: 1,
+            schema_version: 2,
             generated_at: Utc::now(),
             count: 3,
             entries: vec![NameEntry {
                 ja: "ピカチュウ".to_string(),
                 en: "Pikachu".to_string(),
                 id: None,
+                types: vec![],
             }],
         };
 
@@ -200,13 +226,14 @@ mod tests {
     #[test]
     fn test_validate() {
         let dict = NameDictionary {
-            schema_version: 1,
+            schema_version: 2,
             generated_at: Utc::now(),
             count: 1,
             entries: vec![NameEntry {
                 ja: "ピカチュウ".to_string(),
                 en: "Pikachu".to_string(),
                 id: None,
+                types: vec![],
             }],
         };
 
@@ -216,13 +243,14 @@ mod tests {
     #[test]
     fn test_validate_entries_empty_names() {
         let dict = NameDictionary {
-            schema_version: 1,
+            schema_version: 2,
             generated_at: Utc::now(),
             count: 1,
             entries: vec![NameEntry {
                 ja: "".to_string(),
                 en: "Pikachu".to_string(),
                 id: None,
+                types: vec![],
             }],
         };
 
@@ -232,7 +260,7 @@ mod tests {
     #[test]
     fn test_validate_entries_zero_count() {
         let dict = NameDictionary {
-            schema_version: 1,
+            schema_version: 2,
             generated_at: Utc::now(),
             count: 0,
             entries: vec![],
@@ -249,7 +277,7 @@ mod tests {
     #[test]
     fn test_validate_entries_exceed_limit() {
         let dict = NameDictionary {
-            schema_version: 1,
+            schema_version: 2,
             generated_at: Utc::now(),
             count: 15000,
             entries: vec![],

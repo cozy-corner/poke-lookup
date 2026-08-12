@@ -129,7 +129,7 @@ mod tests {
         let test_file = temp_dir.path().join("names.json");
 
         let test_data = NameDictionary {
-            schema_version: 1,
+            schema_version: 2,
             generated_at: Utc::now(),
             count: 2,
             entries: vec![
@@ -137,11 +137,13 @@ mod tests {
                     ja: "ピカチュウ".to_string(),
                     en: "Pikachu".to_string(),
                     id: None,
+                    types: vec![],
                 },
                 NameEntry {
                     ja: "フシギダネ".to_string(),
                     en: "Bulbasaur".to_string(),
                     id: None,
+                    types: vec![],
                 },
             ],
         };

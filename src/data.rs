@@ -103,7 +103,7 @@ mod tests {
 
     fn create_test_data() -> NameDictionary {
         NameDictionary {
-            schema_version: 1,
+            schema_version: 2,
             generated_at: Utc::now(),
             count: 2,
             entries: vec![
@@ -111,11 +111,13 @@ mod tests {
                     ja: "ピカチュウ".to_string(),
                     en: "Pikachu".to_string(),
                     id: None,
+                    types: vec![],
                 },
                 NameEntry {
                     ja: "フシギダネ".to_string(),
                     en: "Bulbasaur".to_string(),
                     id: None,
+                    types: vec![],
                 },
             ],
         }
@@ -157,7 +159,7 @@ mod tests {
         let loader = DataLoader::with_path(&test_file);
         let result = loader.load_dictionary().unwrap();
 
-        assert_eq!(result.schema_version, 1);
+        assert_eq!(result.schema_version, 2);
         assert_eq!(result.count, 2);
         assert_eq!(result.entries.len(), 2);
     }
