@@ -75,10 +75,16 @@ impl SkimItem for PokemonItem {
 }
 
 impl PokemonItem {
-    fn new(ja: &str, en: &str) -> Self {
+    fn new(ja: &str, en: &str, type_tokens: &str) -> Self {
         let display = format!("{} → {}", ja, en);
         let romaji = crate::romaji::variants(ja).join(" ");
-        let match_text = format!("{} {}", display, romaji);
+        // タイプはローマ字と同じく match_text にだけ載せる隠しトークン。
+        // 空のときに末尾空白を足さないよう分岐する
+        let match_text = if type_tokens.is_empty() {
+            format!("{} {}", display, romaji)
+        } else {
+            format!("{} {} {}", display, romaji, type_tokens)
+        };
         Self {
             japanese: ja.to_string(),
             english: en.to_string(),
@@ -207,7 +213,10 @@ impl InteractiveSelector {
         // skim用のアイテムを作成
         let items: Vec<Arc<dyn SkimItem>> = candidates
             .iter()
-            .map(|(ja, en)| Arc::new(PokemonItem::new(ja, en)) as Arc<dyn SkimItem>)
+            .map(|(ja, en)| {
+                let type_tokens = self.search_service.type_tokens(ja);
+                Arc::new(PokemonItem::new(ja, en, &type_tokens)) as Arc<dyn SkimItem>
+            })
             .collect();
 
         // skimオプションを設定
@@ -362,7 +371,7 @@ mod tests {
     }
 
     fn create_test_item() -> PokemonItem {
-        PokemonItem::new("フシギダネ", "Bulbasaur")
+        PokemonItem::new("フシギダネ", "Bulbasaur", "")
     }
 
     #[test]
@@ -373,6 +382,24 @@ mod tests {
         assert!(text.contains("Bulbasaur"));
         assert!(text.contains("fushigidane"));
         assert!(text.contains("husigidane"));
+    }
+
+    #[test]
+    fn test_match_text_contains_type_tokens() {
+        let item = PokemonItem::new("リザードン", "Charizard", "ほのお fire ひこう flying");
+        let text = item.text();
+        assert!(text.contains("ほのお"));
+        assert!(text.contains("fire"));
+        // 表示はタイプを含まない
+        assert_eq!(item.display, "リザードン → Charizard");
+    }
+
+    #[test]
+    fn test_match_text_without_type_tokens() {
+        // 空トークンでも従来通り（末尾に余計な空白を足さない）
+        let item = PokemonItem::new("ピカチュウ", "Pikachu", "");
+        assert!(item.text().contains("ピカチュウ"));
+        assert!(item.text().contains("pikachu"));
     }
 
     #[test]
