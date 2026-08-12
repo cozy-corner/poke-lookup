@@ -7,6 +7,9 @@ use std::collections::HashMap;
 pub struct SearchService {
     /// 検索用HashMap（日本語名 -> 英名）
     name_map: HashMap<String, String>,
+    /// 日本語名 -> タイプの英語スラッグ配列（タイプトークン生成用）
+    #[allow(dead_code)] // 検索コマンドへの統合で使用予定
+    type_map: HashMap<String, Vec<String>>,
 }
 
 impl SearchService {
@@ -17,14 +20,47 @@ impl SearchService {
             .context("Failed to load dictionary")?;
 
         let name_map = dictionary.to_hashmap();
+        let type_map = dictionary.to_type_map();
 
-        Ok(Self { name_map })
+        Ok(Self { name_map, type_map })
     }
 
     /// HashMapから直接検索サービスを作成（テスト用）
     #[allow(dead_code)]
     pub fn from_name_map(name_map: HashMap<String, String>) -> Self {
-        Self { name_map }
+        Self {
+            name_map,
+            type_map: HashMap::new(),
+        }
+    }
+
+    /// name_map と type_map を直接渡して作成（テスト用）
+    #[cfg(test)]
+    pub fn from_maps(
+        name_map: HashMap<String, String>,
+        type_map: HashMap<String, Vec<String>>,
+    ) -> Self {
+        Self { name_map, type_map }
+    }
+
+    /// 日本語名から skim 用のタイプトークン列を作る。
+    /// 各 slug を「日本語名 slug」に展開して空白区切りで並べる（例: "ほのお fire"）。
+    /// 未知 slug は slug のみ。types が無ければ空文字。
+    #[allow(dead_code)] // 検索コマンドへの統合で使用予定
+    pub fn type_tokens(&self, japanese_name: &str) -> String {
+        self.type_map
+            .get(japanese_name)
+            .map(|slugs| {
+                slugs
+                    .iter()
+                    .map(|slug| match crate::pokemon_type::type_ja(slug) {
+                        Some(ja) => format!("{} {}", ja, slug),
+                        None => slug.clone(),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .unwrap_or_default()
     }
 
     /// 新しい検索サービスインスタンスを作成（デフォルトパス使用）
@@ -92,7 +128,29 @@ mod tests {
         name_map.insert("フシギバナ".to_string(), "Venusaur".to_string());
         name_map.insert("ヒトカゲ".to_string(), "Charmander".to_string());
 
-        SearchService { name_map }
+        SearchService {
+            name_map,
+            type_map: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn test_type_tokens() {
+        let mut name_map = HashMap::new();
+        name_map.insert("リザードン".to_string(), "Charizard".to_string());
+        let mut type_map = HashMap::new();
+        type_map.insert(
+            "リザードン".to_string(),
+            vec!["fire".to_string(), "flying".to_string()],
+        );
+        let service = SearchService::from_maps(name_map, type_map);
+
+        assert_eq!(
+            service.type_tokens("リザードン"),
+            "ほのお fire ひこう flying"
+        );
+        // types 無し・未登録は空文字
+        assert_eq!(service.type_tokens("ピカチュウ"), "");
     }
 
     #[test]

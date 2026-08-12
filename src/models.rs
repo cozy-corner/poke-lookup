@@ -39,6 +39,14 @@ impl NameDictionary {
             .collect()
     }
 
+    /// エントリを ja → types の HashMap に変換（タイプトークン生成用）
+    pub fn to_type_map(&self) -> HashMap<String, Vec<String>> {
+        self.entries
+            .iter()
+            .map(|entry| (entry.ja.clone(), entry.types.clone()))
+            .collect()
+    }
+
     /// スキーマバージョンの検証
     pub fn validate_schema(&self) -> Result<(), String> {
         const EXPECTED_VERSION: u32 = 2;
@@ -167,6 +175,27 @@ mod tests {
         let map = dict.to_hashmap();
         assert_eq!(map.get("ピカチュウ"), Some(&"Pikachu".to_string()));
         assert_eq!(map.get("フシギダネ"), Some(&"Bulbasaur".to_string()));
+    }
+
+    #[test]
+    fn test_to_type_map() {
+        let dict = NameDictionary {
+            schema_version: 2,
+            generated_at: Utc::now(),
+            count: 1,
+            entries: vec![NameEntry {
+                ja: "リザードン".to_string(),
+                en: "Charizard".to_string(),
+                id: Some(6),
+                types: vec!["fire".to_string(), "flying".to_string()],
+            }],
+        };
+
+        let map = dict.to_type_map();
+        assert_eq!(
+            map.get("リザードン"),
+            Some(&vec!["fire".to_string(), "flying".to_string()])
+        );
     }
 
     #[test]
