@@ -46,7 +46,6 @@ impl SearchService {
     /// 日本語名から skim 用のタイプトークン列を作る。
     /// 各 slug を「日本語名 slug」に展開して空白区切りで並べる（例: "ほのお fire"）。
     /// 未知 slug は slug のみ。types が無ければ空文字。
-    #[allow(dead_code)] // 検索コマンドへの統合で使用予定
     pub fn type_tokens(&self, japanese_name: &str) -> String {
         self.type_map
             .get(japanese_name)
