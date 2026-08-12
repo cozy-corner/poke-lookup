@@ -175,13 +175,14 @@ mod tests {
         let service = UpdateService::with_path(dict_path.clone()).unwrap();
 
         let test_dict = NameDictionary {
-            schema_version: 1,
+            schema_version: 2,
             generated_at: Utc::now(),
             count: 1,
             entries: vec![NameEntry {
                 ja: "ピカチュウ".to_string(),
                 en: "Pikachu".to_string(),
                 id: None,
+                types: vec![],
             }],
         };
 

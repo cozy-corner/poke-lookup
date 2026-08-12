@@ -5,6 +5,7 @@ mod data;
 mod info;
 mod interactive;
 mod models;
+mod pokemon_type;
 mod romaji;
 mod search;
 #[cfg(feature = "sprites")]

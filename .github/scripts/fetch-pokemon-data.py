@@ -84,6 +84,11 @@ def slug_to_en(slug: str) -> str:
     """英名を持たないフォルム（コライドン/ミライドンの各ビルド）用のフォールバック"""
     return ' '.join(part.capitalize() for part in slug.split('-'))
 
+def extract_types(pokemon_data: dict) -> List[str]:
+    """pokemon データからタイプの英語スラッグを slot 昇順で取り出す"""
+    slots = sorted(pokemon_data.get('types', []), key=lambda t: t['slot'])
+    return [t['type']['name'] for t in slots]
+
 def fetch_form_entry(base_ja: str, pokemon_url: str) -> Optional[Dict[str, str]]:
     """個体URLからフォルムのエントリを作る
 
@@ -106,6 +111,7 @@ def fetch_form_entry(base_ja: str, pokemon_url: str) -> Optional[Dict[str, str]]
         'ja': compose_ja(base_ja, form_ja),
         'en': form_en or slug_to_en(pokemon_data['name']),
         'id': pokemon_data['id'],
+        'types': extract_types(pokemon_data),
         'slug': pokemon_data['name'],
         'species_slug': pokemon_data['species']['name'],
     }
@@ -200,6 +206,15 @@ def main():
             # 名前ペアを抽出
             name_pair = get_name_pair(species_data)
             if name_pair:
+                # タイプは pokemon 側にしか無いのでデフォルト個体を辿る
+                default_url = next(
+                    (v['pokemon']['url']
+                     for v in species_data.get('varieties', [])
+                     if v.get('is_default')),
+                    None,
+                )
+                if default_url:
+                    name_pair['types'] = extract_types(fetch_json(default_url))
                 entries.append(name_pair)
                 variety_refs.extend(get_variety_refs(species_data, name_pair['ja']))
         except Exception as e:
@@ -251,7 +266,7 @@ def main():
     print('\nGenerating final JSON...', file=sys.stderr)
 
     output = {
-        'schema_version': 1,
+        'schema_version': 2,
         'generated_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
         'count': len(entries),
         'entries': entries
