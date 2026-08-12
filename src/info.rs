@@ -11,32 +11,6 @@ use std::collections::HashMap;
 #[cfg(feature = "sprites")]
 const INFO_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
 
-/// タイプの英語スラッグ → 日本語名。18種は固定なので追加APIを叩かずここで引く
-#[cfg(feature = "sprites")]
-fn type_ja(slug: &str) -> Option<&'static str> {
-    Some(match slug {
-        "normal" => "ノーマル",
-        "fire" => "ほのお",
-        "water" => "みず",
-        "electric" => "でんき",
-        "grass" => "くさ",
-        "ice" => "こおり",
-        "fighting" => "かくとう",
-        "poison" => "どく",
-        "ground" => "じめん",
-        "flying" => "ひこう",
-        "psychic" => "エスパー",
-        "bug" => "むし",
-        "rock" => "いわ",
-        "ghost" => "ゴースト",
-        "dragon" => "ドラゴン",
-        "dark" => "あく",
-        "steel" => "はがね",
-        "fairy" => "フェアリー",
-        _ => return None,
-    })
-}
-
 /// 種族値スラッグ → 日本語ラベル。ゲージを揃えるため表示幅8桁に padding 済み
 /// （日本語4文字＝全角で8桁、HP は半角2文字＋空白6）
 #[cfg(feature = "sprites")]
@@ -221,7 +195,7 @@ impl PokemonInfoService {
             .types
             .iter()
             .map(|slot| PokemonType {
-                ja: type_ja(&slot.type_ref.name)
+                ja: crate::pokemon_type::type_ja(&slot.type_ref.name)
                     .map(str::to_string)
                     .unwrap_or_else(|| slot.type_ref.name.clone()),
                 color: type_color(&slot.type_ref.name),
@@ -427,12 +401,6 @@ mod tests {
     #[test]
     fn test_format_types_empty_is_blank() {
         assert_eq!(format_types(&[]), "");
-    }
-
-    #[test]
-    fn test_type_ja_known_and_unknown() {
-        assert_eq!(type_ja("electric"), Some("でんき"));
-        assert_eq!(type_ja("stellar"), None);
     }
 
     #[test]
