@@ -232,7 +232,16 @@ impl InteractiveSelector {
             .preview_window(Some("down:3:wrap"))
             .query(Some(initial_query))
             .prompt(Some("ポケモンを選択: "))
-            .bind(vec!["ctrl-n:down", "ctrl-p:up", "ctrl-j:down", "ctrl-k:up"])
+            // ctrl-d / ctrl-u は skim 既定の delete-char-EOF / 行削除を潰して
+            // 半ページ送りに充てる。矢印や PageUp/PageDown を使わずに送りたいため
+            .bind(vec![
+                "ctrl-n:down",
+                "ctrl-p:up",
+                "ctrl-j:down",
+                "ctrl-k:up",
+                "ctrl-d:half-page-down",
+                "ctrl-u:half-page-up",
+            ])
             .build()
             .context("Failed to build skim options")?;
 
