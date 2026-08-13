@@ -246,6 +246,7 @@ poke-lookup update
 
 操作方法：
 - `↑` / `↓` または `Ctrl+P` / `Ctrl+N`: 上下移動
+- `Ctrl+D` / `Ctrl+U`: 半ページ送り／戻し
 - `Enter`: 選択確定
 - `Ctrl+C` / `Esc`: キャンセル
 
