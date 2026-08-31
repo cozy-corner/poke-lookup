@@ -205,6 +205,11 @@ impl InteractiveSelector {
     }
 
     /// skimを使用したインタラクティブ選択
+    // sprites 無効ビルドでは ESC からの再選択が存在せず、ループは必ず1周で抜ける
+    #[cfg_attr(
+        not(feature = "sprites"),
+        allow(clippy::never_loop, unused_assignments, unused_mut)
+    )]
     fn run_skim_selection(
         &self,
         candidates: &[(&str, &str)],
@@ -219,50 +224,60 @@ impl InteractiveSelector {
             })
             .collect();
 
-        // skimオプションを設定
-        let options = SkimOptionsBuilder::default()
-            .height(Some("40%"))
-            // tuikit の終了処理は実行時の状態ではなくこのオプションで分岐する。
-            // false のままだと、インラインモードで代替画面に入っていないのに
-            // quit_alternate_screen だけを出すため、描画が消えずカーソルも戻らず、
-            // 直後のスプライトが選択UIに重なる（issue #12）。
-            .no_clear_start(true)
-            .multi(false)
-            .preview(Some(""))
-            .preview_window(Some("down:3:wrap"))
-            .query(Some(initial_query))
-            .prompt(Some("ポケモンを選択: "))
-            // ctrl-d / ctrl-u は skim 既定の delete-char-EOF / 行削除を潰して
-            // 半ページ送りに充てる。矢印や PageUp/PageDown を使わずに送りたいため
-            .bind(vec![
-                "ctrl-n:down",
-                "ctrl-p:up",
-                "ctrl-j:down",
-                "ctrl-k:up",
-                "ctrl-d:half-page-down",
-                "ctrl-u:half-page-up",
-            ])
-            .build()
-            .context("Failed to build skim options")?;
+        // ESC での再選択時にそのまま次の skim に渡すため、直前の入力を持ち回る
+        let mut query = initial_query.to_string();
 
-        // チャンネルを作成してアイテムを送信
-        let (tx_item, rx_item): (SkimItemSender, SkimItemReceiver) = unbounded();
+        loop {
+            // skimオプションを設定
+            let options = SkimOptionsBuilder::default()
+                .height(Some("40%"))
+                // tuikit の終了処理は実行時の状態ではなくこのオプションで分岐する。
+                // false のままだと、インラインモードで代替画面に入っていないのに
+                // quit_alternate_screen だけを出すため、描画が消えずカーソルも戻らず、
+                // 直後のスプライトが選択UIに重なる（issue #12）。
+                .no_clear_start(true)
+                .multi(false)
+                .preview(Some(""))
+                .preview_window(Some("down:3:wrap"))
+                .query(Some(query.as_str()))
+                .prompt(Some("ポケモンを選択: "))
+                // ctrl-d / ctrl-u は skim 既定の delete-char-EOF / 行削除を潰して
+                // 半ページ送りに充てる。矢印や PageUp/PageDown を使わずに送りたいため
+                .bind(vec![
+                    "ctrl-n:down",
+                    "ctrl-p:up",
+                    "ctrl-j:down",
+                    "ctrl-k:up",
+                    "ctrl-d:half-page-down",
+                    "ctrl-u:half-page-up",
+                ])
+                .build()
+                .context("Failed to build skim options")?;
 
-        for item in items {
-            let _ = tx_item.send(item);
-        }
-        drop(tx_item); // 送信完了を示すため
+            // チャンネルを作成してアイテムを送信
+            let (tx_item, rx_item): (SkimItemSender, SkimItemReceiver) = unbounded();
 
-        // skimを実行
-        let selected_items = Skim::run_with(&options, Some(rx_item))
-            .context("Failed to run interactive selection")?;
+            // 再選択のたびに送り直すため、Arc を複製して元の items は残す
+            for item in items.iter().cloned() {
+                let _ = tx_item.send(item);
+            }
+            drop(tx_item); // 送信完了を示すため
 
-        // 結果を処理
-        if selected_items.is_abort {
-            return Ok(None); // ユーザーがキャンセル
-        }
+            // skimを実行
+            let selected_items = Skim::run_with(&options, Some(rx_item))
+                .context("Failed to run interactive selection")?;
 
-        if let Some(item) = selected_items.selected_items.first() {
+            // 結果を処理
+            if selected_items.is_abort {
+                return Ok(None); // ユーザーがキャンセル
+            }
+
+            // 再選択に戻ったとき絞り込みをやり直さずに済むよう、対話中の入力を引き継ぐ
+            query = selected_items.query.clone();
+
+            let Some(item) = selected_items.selected_items.first() else {
+                return Ok(None);
+            };
             let english_name = item.output().to_string();
 
             // 鳴き声を先に再生。スプライト表示は Enter/ESC 待ちでブロックするため、
@@ -273,23 +288,17 @@ impl InteractiveSelector {
             // スプライト表示とナビゲーション処理
             #[cfg(feature = "sprites")]
             if let Some(ref sprite_service) = self.sprite_service {
-                if let Some(final_selection) = self.show_sprite_with_navigation(
-                    &english_name,
-                    sprite_service,
-                    candidates,
-                    initial_query,
-                )? {
+                if let Some(final_selection) =
+                    self.show_sprite_with_navigation(&english_name, sprite_service, candidates)?
+                {
                     return Ok(Some(final_selection));
-                } else {
-                    // ESCが押されたら再選択のためにループに戻る
-                    return self.run_skim_selection(candidates, initial_query);
                 }
+                // ESC が押されたら、直前のクエリのまま再選択へ戻る
+                continue;
             }
 
             return Ok(Some(english_name));
         }
-
-        Ok(None)
     }
 
     /// スプライトを表示して、ESC/ENTER/SPACEでナビゲーション
@@ -299,7 +308,6 @@ impl InteractiveSelector {
         english_name: &str,
         sprite_service: &SpriteService,
         candidates: &[(&str, &str)],
-        _initial_query: &str,
     ) -> Result<Option<String>> {
         // スプライトを表示
         sprite_service.display_sprite_for_pokemon(english_name)?;
