@@ -5,7 +5,7 @@ use reqwest::blocking::Client;
 #[cfg(feature = "sprites")]
 use serde::Deserialize;
 #[cfg(feature = "sprites")]
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// /pokemon/{id} は数KB程度。返らないなら諦めて情報表示を省く
 #[cfg(feature = "sprites")]
@@ -87,6 +87,24 @@ struct NamedRef {
     name: String,
 }
 
+/// /type/{name} の応答。防御側から見た相性だけを使う
+#[cfg(feature = "sprites")]
+#[derive(Debug, Deserialize)]
+struct TypeResponse {
+    damage_relations: DamageRelations,
+}
+
+#[cfg(feature = "sprites")]
+#[derive(Debug, Deserialize)]
+struct DamageRelations {
+    #[serde(default)]
+    double_damage_from: Vec<NamedRef>,
+    #[serde(default)]
+    half_damage_from: Vec<NamedRef>,
+    #[serde(default)]
+    no_damage_from: Vec<NamedRef>,
+}
+
 /// タイプの英語スラッグ → チップ背景色の SGR プレフィックス（背景色＋文字色）。
 /// 色は公式タイプカラーに近い256色。暗い背景のタイプだけ文字を白にする
 #[cfg(feature = "sprites")]
@@ -123,6 +141,16 @@ pub struct PokemonType {
     pub color: &'static str,
 }
 
+/// 表示用の1件の弱点。防御側から見た相性で、弱点だけを扱う
+#[cfg(feature = "sprites")]
+pub struct Weakness {
+    pub ja: String,
+    /// 受けるダメージ倍率。弱点のみ扱うので 2 か 4
+    pub multiplier: u8,
+    /// チップ背景色の SGR プレフィックス。未知タイプは空（色なし）
+    pub color: &'static str,
+}
+
 /// 表示用に整形済みの1件の種族値
 #[cfg(feature = "sprites")]
 pub struct StatEntry {
@@ -135,6 +163,8 @@ pub struct StatEntry {
 #[cfg(feature = "sprites")]
 pub struct PokemonInfo {
     pub types: Vec<PokemonType>,
+    /// 弱点（×2 / ×4 のみ）。取得できなければ空
+    pub weaknesses: Vec<Weakness>,
     pub stats: Vec<StatEntry>,
     /// 図鑑説明文（日本語）。取得できなければ None
     pub description: Option<String>,
@@ -223,8 +253,17 @@ impl PokemonInfoService {
             .and_then(|sp| id_from_url(&sp.url))
             .and_then(|species_id| self.fetch_description(species_id));
 
+        // 弱点は自分のタイプごとに /type/{name} を引いて掛け合わせる
+        let own_type_slugs: Vec<String> = body
+            .types
+            .iter()
+            .map(|slot| slot.type_ref.name.clone())
+            .collect();
+        let weaknesses = self.fetch_weaknesses(&own_type_slugs);
+
         Some(PokemonInfo {
             types,
+            weaknesses,
             stats,
             description,
         })
@@ -250,6 +289,67 @@ impl PokemonInfoService {
                     .find(|e| e.language.name == "ja-Hrkt")
             })?;
         Some(clean_flavor(&entry.flavor_text))
+    }
+
+    /// 自分のタイプごとに /type/{name} を引き、攻撃タイプごとに倍率を掛け合わせて
+    /// 弱点（×2 / ×4）だけを返す。複合タイプの相性は和集合ではなく積なので、
+    /// 耐性(×0.5)と無効(×0)も必ず読む（無効は他のタイプの弱点を打ち消す）
+    fn fetch_weaknesses(&self, own_type_slugs: &[String]) -> Vec<Weakness> {
+        // 攻撃タイプのスラッグ -> 2 の指数（×2 で +1、×0.5 で -1、等倍は 0）
+        let mut exponent: HashMap<String, i32> = HashMap::new();
+        // 1 つでも無効(×0)なら、他のタイプが弱点でも合計は 0 のまま
+        let mut immune: HashSet<String> = HashSet::new();
+
+        for slug in own_type_slugs {
+            let Some(relations) = self.fetch_damage_relations(slug) else {
+                continue;
+            };
+            for target in &relations.double_damage_from {
+                *exponent.entry(target.name.clone()).or_insert(0) += 1;
+            }
+            for target in &relations.half_damage_from {
+                *exponent.entry(target.name.clone()).or_insert(0) -= 1;
+            }
+            for target in &relations.no_damage_from {
+                immune.insert(target.name.clone());
+            }
+        }
+
+        let mut weaknesses: Vec<(String, u8)> = exponent
+            .into_iter()
+            .filter(|(slug, exp)| *exp >= 1 && !immune.contains(slug))
+            // 指数 1 で ×2、2 で ×4。実データは 2 タイプまでだが、
+            // 異常値で u8 から溢れないよう u32 で計算してから丸める
+            .map(|(slug, exp)| (slug, (1u32 << exp).min(u8::MAX as u32) as u8))
+            .collect();
+
+        // 倍率の高い順、同倍率内はスラッグ順（表示を安定させる）
+        weaknesses.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+
+        weaknesses
+            .into_iter()
+            .map(|(slug, multiplier)| Weakness {
+                // 未知スラッグはそのまま出してフォールバック
+                ja: crate::pokemon_type::type_ja(&slug)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| slug.clone()),
+                multiplier,
+                color: type_color(&slug),
+            })
+            .collect()
+    }
+
+    /// /type/{slug} の相性を取得。失敗時は None（弱点表示だけ諦める）
+    fn fetch_damage_relations(&self, type_slug: &str) -> Option<DamageRelations> {
+        let url = format!("{}/type/{}", self.base_url, type_slug);
+        let response = self.client.get(&url).send().ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        response
+            .json::<TypeResponse>()
+            .ok()
+            .map(|t| t.damage_relations)
     }
 
     #[cfg(test)]
@@ -280,6 +380,10 @@ const GAUGE_EMPTY: &str = "\x1b[38;5;58m";
 /// SGR リセット（色指定の打ち消し）
 #[cfg(feature = "sprites")]
 const SGR_RESET: &str = "\x1b[0m";
+/// ×4（4倍弱点）のチップに添える警告マーク。太字(SGR 1)は日本語フォントに
+/// 太字が無い端末では描画されないため、フォント依存の無い文字で強調する
+#[cfg(feature = "sprites")]
+const QUAD_MARKER: &str = "⚠";
 
 /// 名前（と取れれば図鑑番号）の見出し行。名前は必ず出す。
 /// info サービス初期化失敗などで id が無くても、選択したポケモンが分かるように
@@ -300,6 +404,7 @@ pub fn format_header(id: Option<u32>, japanese: Option<&str>, english: &str) -> 
 pub fn format_body(info: &PokemonInfo) -> String {
     let mut out = String::new();
     out.push_str(&format_types(&info.types));
+    out.push_str(&format_weaknesses(&info.weaknesses));
     out.push_str(&format_stats(&info.stats));
     if let Some(ref description) = info.description {
         out.push_str(&format!("\n{}\n", description));
@@ -318,6 +423,31 @@ fn format_types(types: &[PokemonType]) -> String {
         .map(|t| format!("{} {} {}", t.color, t.ja, SGR_RESET))
         .collect();
     format!("\n{}\n", chips.join(" "))
+}
+
+/// 弱点をチップで並べた1行。語ラベルの代わりに `←` で「飛んでくる側」を示し、
+/// ×4 だけ警告マークを添える。空なら空文字
+#[cfg(feature = "sprites")]
+fn format_weaknesses(weaknesses: &[Weakness]) -> String {
+    if weaknesses.is_empty() {
+        return String::new();
+    }
+    let chips: Vec<String> = weaknesses
+        .iter()
+        .map(|w| {
+            // ×4（2タイプとも弱点）だけ警告マークを添える
+            let label = if w.multiplier >= 4 {
+                format!("{}{}", QUAD_MARKER, w.ja)
+            } else {
+                w.ja.clone()
+            };
+            format!("{} {} {}", w.color, label, SGR_RESET)
+        })
+        .collect();
+    // チップ自身が前後に空白を持つので、矢印の後にも 1 文字あけておく
+    // （あけないと矢印がチップの色ブロックに接して詰まって見える）。
+    // 区切りはタイプ行と同じに揃える
+    format!("\n ← {}\n", chips.join(" "))
 }
 
 /// 種族値ゲージ（各行）と合計。空なら空文字
@@ -361,6 +491,24 @@ fn format_stat_gauge(label: &str, value: u16) -> String {
 mod tests {
     use super::*;
 
+    /// SGR エスケープを除去してテキストだけ残す（色・太字の検証と分離するため）
+    fn strip_sgr(s: &str) -> String {
+        let mut out = String::new();
+        let mut chars = s.chars();
+        while let Some(c) = chars.next() {
+            if c == '\u{1b}' {
+                for c2 in chars.by_ref() {
+                    if c2 == 'm' {
+                        break;
+                    }
+                }
+            } else {
+                out.push(c);
+            }
+        }
+        out
+    }
+
     #[test]
     fn test_format_stat_gauge() {
         // 色コードを剥がして棒の中身だけ検証する
@@ -401,6 +549,131 @@ mod tests {
     #[test]
     fn test_format_types_empty_is_blank() {
         assert_eq!(format_types(&[]), "");
+    }
+
+    #[test]
+    fn test_format_weaknesses_empty_is_blank() {
+        assert_eq!(format_weaknesses(&[]), "");
+    }
+
+    #[test]
+    fn test_format_weaknesses_marks_quad_and_hides_multiplier() {
+        let weaknesses = vec![
+            Weakness {
+                ja: "いわ".to_string(),
+                multiplier: 4,
+                color: type_color("rock"),
+            },
+            Weakness {
+                ja: "みず".to_string(),
+                multiplier: 2,
+                color: type_color("water"),
+            },
+        ];
+        let out = format_weaknesses(&weaknesses);
+        let plain = strip_sgr(&out);
+
+        // ×4 にだけ警告マークが付き、行ラベルは語ではなく `←` で示す。
+        // 矢印とチップの間は 1 文字あける（チップ内の余白と合わせて詰まらないように）
+        assert_eq!(plain, "\n ←  ⚠いわ   みず \n");
+
+        // 倍率の数字は出さない
+        assert!(!plain.chars().any(|c| c.is_ascii_digit()));
+        assert!(!plain.contains('×'));
+    }
+
+    #[test]
+    fn test_fetch_weaknesses_multiplies_across_types() {
+        use httpmock::prelude::*;
+
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/pokemon/6");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(
+                    r#"{"types":[
+                        {"slot":1,"type":{"name":"fire","url":"x"}},
+                        {"slot":2,"type":{"name":"flying","url":"x"}}
+                    ],"stats":[]}"#,
+                );
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/type/fire");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(
+                    r#"{"damage_relations":{
+                        "double_damage_from":[{"name":"ground"},{"name":"rock"},{"name":"water"}],
+                        "half_damage_from":[{"name":"bug"},{"name":"steel"},{"name":"fire"},{"name":"grass"},{"name":"ice"},{"name":"fairy"}],
+                        "no_damage_from":[]
+                    }}"#,
+                );
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/type/flying");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(
+                    r#"{"damage_relations":{
+                        "double_damage_from":[{"name":"rock"},{"name":"electric"},{"name":"ice"}],
+                        "half_damage_from":[{"name":"fighting"},{"name":"bug"},{"name":"grass"}],
+                        "no_damage_from":[{"name":"ground"}]
+                    }}"#,
+                );
+        });
+
+        let mut id_map = HashMap::new();
+        id_map.insert("Charizard".to_string(), 6);
+        let service = PokemonInfoService::for_test(server.url(""), id_map);
+
+        let info = service.fetch("Charizard").expect("should fetch");
+        let got: Vec<(String, u8)> = info
+            .weaknesses
+            .iter()
+            .map(|w| (w.ja.clone(), w.multiplier))
+            .collect();
+
+        // リザードン(fire/flying): いわ は 2×2 で ×4、でんき・みず は ×2
+        assert_eq!(
+            got,
+            vec![
+                ("いわ".to_string(), 4),
+                ("でんき".to_string(), 2),
+                ("みず".to_string(), 2),
+            ]
+        );
+        // じめんは flying の無効(×0)が fire の ×2 を打ち消す
+        assert!(!got.iter().any(|(ja, _)| ja == "じめん"));
+        // こおりは fire の耐性(×0.5)と flying の ×2 が相殺して等倍
+        assert!(!got.iter().any(|(ja, _)| ja == "こおり"));
+    }
+
+    #[test]
+    fn test_fetch_weaknesses_stay_empty_when_type_lookup_fails() {
+        use httpmock::prelude::*;
+
+        let server = MockServer::start();
+        // /type/electric はモックしない（404 になる）
+        server.mock(|when, then| {
+            when.method(GET).path("/pokemon/25");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(
+                    r#"{"types":[{"slot":1,"type":{"name":"electric","url":"x"}}],
+                        "stats":[{"base_stat":35,"stat":{"name":"hp"}}]}"#,
+                );
+        });
+
+        let mut id_map = HashMap::new();
+        id_map.insert("Pikachu".to_string(), 25);
+        let service = PokemonInfoService::for_test(server.url(""), id_map);
+
+        let info = service.fetch("Pikachu").expect("should fetch");
+        assert!(info.weaknesses.is_empty());
+        // 弱点が取れなくても、タイプと種族値は残る
+        assert_eq!(info.types.len(), 1);
+        assert_eq!(info.stats.len(), 1);
     }
 
     #[test]
