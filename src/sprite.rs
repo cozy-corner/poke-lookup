@@ -3,6 +3,8 @@ use anyhow::{Context, Result};
 #[cfg(feature = "sprites")]
 use directories::ProjectDirs;
 #[cfg(feature = "sprites")]
+use image::{DynamicImage, GenericImageView, RgbaImage};
+#[cfg(feature = "sprites")]
 use reqwest::blocking::Client;
 #[cfg(feature = "sprites")]
 use std::collections::HashMap;
@@ -71,30 +73,71 @@ impl SpriteService {
         self.cache_dir.join(format!("{}.png", pokemon_id))
     }
 
-    /// ポケモンのスプライト画像を取得して表示
+    /// 後ろ姿のローカルキャッシュパス。前姿と衝突しないよう別名にする
+    pub fn get_back_sprite_path(&self, pokemon_id: u32) -> PathBuf {
+        self.cache_dir.join(format!("{}_back.png", pokemon_id))
+    }
+
+    /// 前姿と後ろ姿を横並びで表示。後ろ姿が取れなければ前姿だけ表示する
     pub fn display_sprite_for_pokemon(&self, english_name: &str) -> Result<()> {
-        if let Some(pokemon_id) = self.get_pokemon_id(english_name) {
-            match self.fetch_sprite(pokemon_id) {
-                Ok(sprite_path) => {
-                    self.display_sprite(&sprite_path)?;
-                }
-                Err(_) => {
-                    // 静かに失敗
-                }
+        let Some(pokemon_id) = self.get_pokemon_id(english_name) else {
+            return Ok(());
+        };
+        // 前姿が取れないときは静かに何も出さない
+        let Ok(front_path) = self.fetch_sprite(pokemon_id) else {
+            return Ok(());
+        };
+
+        let back = self
+            .fetch_back_sprite(pokemon_id)
+            .ok()
+            .and_then(|path| image::open(path).ok());
+        let front = image::open(&front_path).ok();
+
+        let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
+        if let (Some(front), Some(back)) = (front, back) {
+            let combined = compose_side_by_side(&front, &back);
+            if fits_side_by_side(
+                front.dimensions(),
+                combined.dimensions(),
+                u32::from(cols),
+                u32::from(rows),
+            ) {
+                return self.print_image(&combined, &front_path);
             }
         }
-        Ok(())
+        self.display_sprite(&front_path)
     }
 
     /// PokeAPIからスプライト画像をダウンロード
     pub fn fetch_sprite(&self, pokemon_id: u32) -> Result<PathBuf> {
-        let sprite_path = self.get_sprite_path(pokemon_id);
+        self.fetch_cached(
+            self.get_sprite_path(pokemon_id),
+            &format!("sprites/pokemon/{}.png", pokemon_id),
+            pokemon_id,
+        )
+    }
 
+    /// PokeAPIから後ろ姿をダウンロード
+    pub fn fetch_back_sprite(&self, pokemon_id: u32) -> Result<PathBuf> {
+        self.fetch_cached(
+            self.get_back_sprite_path(pokemon_id),
+            &format!("sprites/pokemon/back/{}.png", pokemon_id),
+            pokemon_id,
+        )
+    }
+
+    fn fetch_cached(
+        &self,
+        sprite_path: PathBuf,
+        url_path: &str,
+        pokemon_id: u32,
+    ) -> Result<PathBuf> {
         if sprite_path.exists() {
             return Ok(sprite_path);
         }
 
-        let url = format!("{}/sprites/pokemon/{}.png", self.base_url, pokemon_id);
+        let url = format!("{}/{}", self.base_url, url_path);
 
         let response = self
             .client
@@ -120,27 +163,22 @@ impl SpriteService {
 
     /// スプライト画像をターミナルに表示
     pub fn display_sprite(&self, sprite_path: &Path) -> Result<()> {
-        #[cfg(feature = "sprites")]
-        {
-            // Try viuer first - it handles terminal detection automatically
-            let img = image::open(sprite_path).with_context(|| {
-                format!("Failed to open sprite image: {}", sprite_path.display())
-            })?;
+        let img = image::open(sprite_path)
+            .with_context(|| format!("Failed to open sprite image: {}", sprite_path.display()))?;
+        self.print_image(&img, sprite_path)
+    }
 
-            let config = viuer::Config {
-                transparent: true,
-                absolute_offset: false,
-                ..Default::default()
-            };
+    fn print_image(&self, img: &DynamicImage, sprite_path: &Path) -> Result<()> {
+        let config = viuer::Config {
+            transparent: true,
+            absolute_offset: false,
+            ..Default::default()
+        };
 
-            match viuer::print(&img, &config) {
-                Ok(_) => {}
-                Err(e) => {
-                    // Fallback to text if viuer fails
-                    println!("🖼️  Sprite saved at: {}", sprite_path.display());
-                    println!("   (Terminal image display not available: {})", e);
-                }
-            }
+        if let Err(e) = viuer::print(img, &config) {
+            // viuer が使えない端末ではパスだけ案内する
+            println!("🖼️  Sprite saved at: {}", sprite_path.display());
+            println!("   (Terminal image display not available: {})", e);
         }
         Ok(())
     }
@@ -166,10 +204,36 @@ impl SpriteService {
     }
 }
 
+/// 並べた画像を端末に収めても、前姿だけのときより縮まないか。
+/// 縮むと荒くなるので、収まらない（半幅ペインなど）ときは前姿だけを出す。
+/// viuer は画像を端末の桁数×行数（1行=縦2px換算）に収めるため、その倍率を比べる
+#[cfg(feature = "sprites")]
+fn fits_side_by_side(front: (u32, u32), combined: (u32, u32), cols: u32, rows: u32) -> bool {
+    let scale = |(w, h): (u32, u32)| {
+        let by_width = f64::from(cols) / f64::from(w);
+        let by_height = f64::from(2 * rows) / f64::from(h);
+        1.0_f64.min(by_width).min(by_height)
+    };
+    scale(combined) >= scale(front)
+}
+
+/// 前姿を左、後ろ姿を右に並べた1枚の画像にする。
+/// 1枚にまとめるのは、viuer のカーソル制御に頼らず横並びを保つため
+#[cfg(feature = "sprites")]
+fn compose_side_by_side(front: &DynamicImage, back: &DynamicImage) -> DynamicImage {
+    let (fw, fh) = front.dimensions();
+    let (bw, bh) = back.dimensions();
+    let mut canvas = RgbaImage::new(fw + bw, fh.max(bh));
+    image::imageops::overlay(&mut canvas, &front.to_rgba8(), 0, 0);
+    image::imageops::overlay(&mut canvas, &back.to_rgba8(), i64::from(fw), 0);
+    DynamicImage::ImageRgba8(canvas)
+}
+
 #[cfg(test)]
 #[cfg(feature = "sprites")]
 mod tests {
     use super::*;
+    use image::{Rgba, RgbaImage};
     use std::fs;
     use tempfile::tempdir;
 
@@ -351,6 +415,98 @@ mod tests {
 
         // Verify that no file was created
         assert!(!service.get_sprite_path(9999).exists());
+    }
+
+    #[test]
+    fn test_back_sprite_path_is_separate_from_front() {
+        let temp_dir = tempdir().unwrap();
+        let service = SpriteService::for_test(temp_dir.path().to_path_buf(), HashMap::new());
+
+        assert_eq!(
+            service.get_back_sprite_path(25),
+            temp_dir.path().join("25_back.png")
+        );
+        assert_ne!(
+            service.get_back_sprite_path(25),
+            service.get_sprite_path(25)
+        );
+    }
+
+    #[test]
+    fn test_fetch_back_sprite_downloads_from_back_dir_and_caches() {
+        use httpmock::prelude::*;
+
+        let server = MockServer::start();
+        let mock = server.mock(|when, then| {
+            when.method(GET).path("/sprites/pokemon/back/25.png");
+            then.status(200).body(b"back_image");
+        });
+
+        let temp_dir = tempdir().unwrap();
+        let service = SpriteService::with_base_url(
+            temp_dir.path().to_path_buf(),
+            Client::new(),
+            server.url(""),
+        );
+
+        let path = service.fetch_back_sprite(25).unwrap();
+        assert_eq!(path, temp_dir.path().join("25_back.png"));
+        assert_eq!(fs::read(&path).unwrap(), b"back_image");
+        mock.assert();
+        // 2回目はキャッシュを使うので再ダウンロードしない
+        service.fetch_back_sprite(25).unwrap();
+        mock.assert_hits(1);
+    }
+
+    #[test]
+    fn test_fetch_back_sprite_404_creates_no_file() {
+        use httpmock::prelude::*;
+
+        let server = MockServer::start();
+        let _mock = server.mock(|when, then| {
+            when.method(GET).path("/sprites/pokemon/back/10264.png");
+            then.status(404);
+        });
+
+        let temp_dir = tempdir().unwrap();
+        let service = SpriteService::with_base_url(
+            temp_dir.path().to_path_buf(),
+            Client::new(),
+            server.url(""),
+        );
+
+        assert!(service.fetch_back_sprite(10264).is_err());
+        assert!(!service.get_back_sprite_path(10264).exists());
+    }
+
+    #[test]
+    fn test_compose_side_by_side_puts_front_left_and_back_right() {
+        let front = DynamicImage::ImageRgba8(RgbaImage::from_pixel(4, 3, Rgba([255, 0, 0, 255])));
+        let back = DynamicImage::ImageRgba8(RgbaImage::from_pixel(5, 3, Rgba([0, 0, 255, 255])));
+
+        let combined = compose_side_by_side(&front, &back).to_rgba8();
+
+        assert_eq!(combined.dimensions(), (9, 3));
+        assert_eq!(combined.get_pixel(0, 0), &Rgba([255, 0, 0, 255]));
+        assert_eq!(combined.get_pixel(4, 0), &Rgba([0, 0, 255, 255]));
+    }
+
+    #[test]
+    fn test_side_by_side_fits_in_wide_terminal() {
+        // 前姿の表示倍率(桁/px)を保てるなら並べる
+        assert!(fits_side_by_side((96, 96), (192, 96), 200, 100));
+    }
+
+    #[test]
+    fn test_side_by_side_does_not_fit_in_half_width_pane() {
+        // 並べると端末幅に収めるため縮み、前姿だけのときより荒くなる
+        assert!(!fits_side_by_side((96, 96), (192, 96), 100, 60));
+    }
+
+    #[test]
+    fn test_side_by_side_when_height_is_the_limit() {
+        // 高さで制限される端末では、並べても倍率が変わらない幅があれば並べる
+        assert!(fits_side_by_side((96, 96), (192, 96), 100, 20));
     }
 
     #[test]
