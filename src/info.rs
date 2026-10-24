@@ -31,6 +31,11 @@ fn stat_ja(slug: &str) -> Option<&'static str> {
 struct PokemonResponse {
     types: Vec<TypeSlot>,
     stats: Vec<StatSlot>,
+    // 単位は PokéAPI 準拠（height: dm、weight: hg）
+    #[serde(default)]
+    height: Option<u32>,
+    #[serde(default)]
+    weight: Option<u32>,
     // フォルムでも正しい種を辿れるよう species の URL を使う
     #[serde(default)]
     species: Option<UrlRef>,
@@ -166,6 +171,10 @@ pub struct PokemonInfo {
     /// 弱点（×2 / ×4 のみ）。取得できなければ空
     pub weaknesses: Vec<Weakness>,
     pub stats: Vec<StatEntry>,
+    /// 高さ（dm）。取得できなければ None
+    pub height_dm: Option<u32>,
+    /// 重さ（hg）。取得できなければ None
+    pub weight_hg: Option<u32>,
     /// 図鑑説明文（日本語）。取得できなければ None
     pub description: Option<String>,
 }
@@ -265,6 +274,8 @@ impl PokemonInfoService {
             types,
             weaknesses,
             stats,
+            height_dm: body.height,
+            weight_hg: body.weight,
             description,
         })
     }
@@ -405,6 +416,7 @@ pub fn format_body(info: &PokemonInfo) -> String {
     let mut out = String::new();
     out.push_str(&format_types(&info.types));
     out.push_str(&format_weaknesses(&info.weaknesses));
+    out.push_str(&format_size(info.height_dm, info.weight_hg));
     out.push_str(&format_stats(&info.stats));
     if let Some(ref description) = info.description {
         out.push_str(&format!("\n{}\n", description));
@@ -448,6 +460,29 @@ fn format_weaknesses(weaknesses: &[Weakness]) -> String {
     // （あけないと矢印がチップの色ブロックに接して詰まって見える）。
     // 区切りはタイプ行と同じに揃える
     format!("\n ← {}\n", chips.join(" "))
+}
+
+/// 高さ(dm)・重さ(hg)を `たかさ  0.4m` / `おもさ  6.0kg` の2行にする。
+/// 数値を右揃えにして単位(m / kg)の位置を揃える。取れた方だけ出し、両方無ければ空文字
+#[cfg(feature = "sprites")]
+fn format_size(height_dm: Option<u32>, weight_hg: Option<u32>) -> String {
+    let tenths = |v: u32| format!("{}.{}", v / 10, v % 10);
+    let rows: Vec<(&str, String, &str)> = [
+        height_dm.map(|h| ("たかさ", tenths(h), "m")),
+        weight_hg.map(|w| ("おもさ", tenths(w), "kg")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if rows.is_empty() {
+        return String::new();
+    }
+    let width = rows.iter().map(|(_, n, _)| n.len()).max().unwrap_or(0);
+    let lines: Vec<String> = rows
+        .iter()
+        .map(|(label, n, unit)| format!("{}  {:>width$}{}", label, n, unit))
+        .collect();
+    format!("\n{}\n", lines.join("\n"))
 }
 
 /// 種族値ゲージ（各行）と合計。空なら空文字
@@ -674,6 +709,41 @@ mod tests {
         // 弱点が取れなくても、タイプと種族値は残る
         assert_eq!(info.types.len(), 1);
         assert_eq!(info.stats.len(), 1);
+    }
+
+    #[test]
+    fn test_format_size() {
+        assert_eq!(
+            format_size(Some(4), Some(60)),
+            "\nたかさ  0.4m\nおもさ  6.0kg\n"
+        );
+        assert_eq!(format_size(Some(17), None), "\nたかさ  1.7m\n");
+        // 桁数が違っても単位の位置が揃う
+        assert_eq!(
+            format_size(Some(145), Some(3980)),
+            "\nたかさ   14.5m\nおもさ  398.0kg\n"
+        );
+        assert_eq!(format_size(None, None), "");
+    }
+
+    #[test]
+    fn test_fetch_maps_height_and_weight() {
+        use httpmock::prelude::*;
+
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(GET).path("/pokemon/25");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"types":[],"stats":[],"height":4,"weight":60}"#);
+        });
+        let mut id_map = HashMap::new();
+        id_map.insert("Pikachu".to_string(), 25);
+        let service = PokemonInfoService::for_test(server.url(""), id_map);
+
+        let info = service.fetch("Pikachu").expect("should fetch");
+        assert_eq!(info.height_dm, Some(4));
+        assert_eq!(info.weight_hg, Some(60));
     }
 
     #[test]
