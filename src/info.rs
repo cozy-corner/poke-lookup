@@ -51,6 +51,23 @@ struct UrlRef {
 #[derive(Debug, Deserialize)]
 struct SpeciesResponse {
     flavor_text_entries: Vec<FlavorEntry>,
+    #[serde(default)]
+    genera: Vec<GenusEntry>,
+}
+
+#[cfg(feature = "sprites")]
+#[derive(Debug, Deserialize)]
+struct GenusEntry {
+    genus: String,
+    language: NamedRef,
+}
+
+/// species から取る情報（図鑑説明文と分類）
+#[cfg(feature = "sprites")]
+#[derive(Default)]
+struct SpeciesInfo {
+    description: Option<String>,
+    genus: Option<String>,
 }
 
 #[cfg(feature = "sprites")]
@@ -175,6 +192,8 @@ pub struct PokemonInfo {
     pub height_dm: Option<u32>,
     /// 重さ（hg）。取得できなければ None
     pub weight_hg: Option<u32>,
+    /// 分類（例: ねずみポケモン）。取得できなければ None
+    pub genus: Option<String>,
     /// 図鑑説明文（日本語）。取得できなければ None
     pub description: Option<String>,
 }
@@ -256,11 +275,12 @@ impl PokemonInfoService {
         // フォルムは form id から species を辿れない（/pokemon-species/{form_id} は
         // 404）。応答の species URL から species id を取り出し、リクエスト自体は
         // base_url に根ざして組み立てる（テスト可能・リモートURL追従を避ける）
-        let description = body
+        let species = body
             .species
             .as_ref()
             .and_then(|sp| id_from_url(&sp.url))
-            .and_then(|species_id| self.fetch_description(species_id));
+            .and_then(|species_id| self.fetch_species(species_id))
+            .unwrap_or_default();
 
         // 弱点は自分のタイプごとに /type/{name} を引いて掛け合わせる
         let own_type_slugs: Vec<String> = body
@@ -276,12 +296,13 @@ impl PokemonInfoService {
             stats,
             height_dm: body.height,
             weight_hg: body.weight,
-            description,
+            genus: species.genus,
+            description: species.description,
         })
     }
 
-    /// species ID から日本語の図鑑説明文を1件取得。失敗時は None
-    fn fetch_description(&self, species_id: u32) -> Option<String> {
+    /// species ID から日本語の図鑑説明文と分類を取得。失敗時は None
+    fn fetch_species(&self, species_id: u32) -> Option<SpeciesInfo> {
         let url = format!("{}/pokemon-species/{}", self.base_url, species_id);
         let response = self.client.get(&url).send().ok()?;
         if !response.status().is_success() {
@@ -289,7 +310,7 @@ impl PokemonInfoService {
         }
         let species = response.json::<SpeciesResponse>().ok()?;
         // 漢字かな交じり(ja)を優先。無ければ かな(ja-Hrkt) にフォールバック
-        let entry = species
+        let description = species
             .flavor_text_entries
             .iter()
             .find(|e| e.language.name == "ja")
@@ -298,8 +319,21 @@ impl PokemonInfoService {
                     .flavor_text_entries
                     .iter()
                     .find(|e| e.language.name == "ja-Hrkt")
-            })?;
-        Some(clean_flavor(&entry.flavor_text))
+            })
+            .map(|entry| clean_flavor(&entry.flavor_text));
+        // genera の かな は "ja-hrkt"（小文字）で返る
+        let genus = species
+            .genera
+            .iter()
+            .find(|g| g.language.name == "ja")
+            .or_else(|| {
+                species
+                    .genera
+                    .iter()
+                    .find(|g| g.language.name.eq_ignore_ascii_case("ja-hrkt"))
+            })
+            .map(|g| g.genus.clone());
+        Some(SpeciesInfo { description, genus })
     }
 
     /// 自分のタイプごとに /type/{name} を引き、攻撃タイプごとに倍率を掛け合わせて
@@ -410,10 +444,14 @@ pub fn format_header(id: Option<u32>, japanese: Option<&str>, english: &str) -> 
     }
 }
 
-/// タイプ・種族値・説明をまとめた本文。取得できた部分だけを連結する
+/// 分類・タイプ・種族値・説明をまとめた本文。取得できた部分だけを連結する
 #[cfg(feature = "sprites")]
 pub fn format_body(info: &PokemonInfo) -> String {
     let mut out = String::new();
+    // 見出し行の直後に空行なしで続ける
+    if let Some(ref genus) = info.genus {
+        out.push_str(&format!("{}\n", genus));
+    }
     out.push_str(&format_types(&info.types));
     out.push_str(&format_weaknesses(&info.weaknesses));
     out.push_str(&format_size(info.height_dm, info.weight_hg));
@@ -836,6 +874,10 @@ mod tests {
                     r#"{"flavor_text_entries":[
                         {"flavor_text":"かな\nテキスト","language":{"name":"ja-Hrkt"}},
                         {"flavor_text":"漢字\nテキスト","language":{"name":"ja"}}
+                    ],"genera":[
+                        {"genus":"ねずみポケモン","language":{"name":"ja-hrkt"}},
+                        {"genus":"鼠ポケモン","language":{"name":"ja"}},
+                        {"genus":"Mouse Pokémon","language":{"name":"en"}}
                     ]}"#,
                 );
         });
@@ -847,5 +889,42 @@ mod tests {
         // ja を優先し、clean_flavor で改行が詰められている
         let info = service.fetch("Pikachu").expect("should fetch");
         assert_eq!(info.description.as_deref(), Some("漢字テキスト"));
+        assert_eq!(info.genus.as_deref(), Some("鼠ポケモン"));
+    }
+
+    #[test]
+    fn test_fetch_genus_falls_back_to_ja_hrkt() {
+        use httpmock::prelude::*;
+
+        let server = MockServer::start();
+        let species_url = server.url("/pokemon-species/25");
+        server.mock(|when, then| {
+            when.method(GET).path("/pokemon/25");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(format!(
+                    r#"{{"types":[],"stats":[],"species":{{"url":"{}"}}}}"#,
+                    species_url
+                ));
+        });
+        server.mock(|when, then| {
+            when.method(GET).path("/pokemon-species/25");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(
+                    r#"{"flavor_text_entries":[],"genera":[
+                        {"genus":"Mouse Pokémon","language":{"name":"en"}},
+                        {"genus":"ねずみポケモン","language":{"name":"ja-hrkt"}}
+                    ]}"#,
+                );
+        });
+
+        let mut id_map = HashMap::new();
+        id_map.insert("Pikachu".to_string(), 25);
+        let service = PokemonInfoService::for_test(server.url(""), id_map);
+
+        let info = service.fetch("Pikachu").expect("should fetch");
+        assert_eq!(info.genus.as_deref(), Some("ねずみポケモン"));
+        assert_eq!(info.description, None);
     }
 }
